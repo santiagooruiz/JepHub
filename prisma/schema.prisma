@@ -35,6 +35,13 @@ enum CloseProb {
   FIXED
 }
 
+enum ApprovalKind {
+  INGRESO
+  FABRICACION
+  INSTALACION
+  FACTURACION
+}
+
 // ─────────────────────────── Tenancy ───────────────────────────
 model Company {
   id         String      @id @default(cuid())
@@ -49,6 +56,7 @@ model Company {
   opportunities Opportunity[]
   quotes        Quote[]
   products      Product[]
+  orders        Order[]
 }
 
 // ─────────────────────────── Config & Catálogos ───────────────────────────
@@ -143,6 +151,8 @@ model User {
   activities         Activity[]
   opportunitiesAdvised Opportunity[] @relation("OppAdvisor")
   quotesRegistered   Quote[]       @relation("QuoteRegisteredBy")
+  ordersAdvised      Order[]       @relation("OrderAdvisor")
+  orderApprovals     OrderApproval[]
 }
 
 // ─────────────────────────── Clientes ───────────────────────────
@@ -188,6 +198,7 @@ model Client {
   attachments          Attachment[]
   opportunities        Opportunity[]
   quotes               Quote[]
+  orders               Order[]
 
   @@unique([companyId, numero])
   @@index([companyId, estado])
@@ -224,6 +235,7 @@ model Opportunity {
   updatedAt             DateTime   @updatedAt
   deletedAt             DateTime?
   quotes                Quote[]
+  orders                Order[]
 
   @@unique([companyId, numero])
   @@index([companyId, estado])
@@ -340,9 +352,73 @@ model Quote {
   deletedAt        DateTime?
   items            LineItem[]
   signature        Signature?
+  order            Order?
 
   @@unique([companyId, numero])
   @@index([companyId, estado])
+}
+
+// ─────────────────────────── Pedidos ───────────────────────────
+// (interna: "order" en el CRM original)
+model Order {
+  id                  String          @id @default(cuid())
+  companyId           String
+  company             Company         @relation(fields: [companyId], references: [id])
+  numero              Int
+  clientId            String
+  client              Client          @relation(fields: [clientId], references: [id])
+  opportunityId       String?
+  opportunity         Opportunity?    @relation(fields: [opportunityId], references: [id])
+  quoteId             String?         @unique
+  quote               Quote?          @relation(fields: [quoteId], references: [id])
+  advisorId           String?
+  advisor             User?           @relation("OrderAdvisor", fields: [advisorId], references: [id])
+  estado              String          @default("Pendiente Ingreso")
+  tipoProducto        String          @default("Estándar")
+  requiereInstalacion Boolean         @default(false)
+  formaPago           String?
+  ordenCompra         String?
+  direccionEnvio      String?
+  subtotal            Decimal         @default(0) @db.Decimal(15, 2)
+  impuesto            Decimal         @default(0) @db.Decimal(15, 2)
+  total               Decimal         @default(0) @db.Decimal(15, 2)
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+  deletedAt           DateTime?
+  items               LineItem[]
+  approvals           OrderApproval[]
+  erpSync             ErpSync?
+
+  @@unique([companyId, numero])
+  @@index([companyId, estado])
+}
+
+model OrderApproval {
+  id           String       @id @default(cuid())
+  orderId      String
+  order        Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  kind         ApprovalKind
+  aprobado     Boolean      @default(false)
+  approvedById String?
+  approvedBy   User?        @relation(fields: [approvedById], references: [id])
+  observacion  String?
+  fecha        DateTime?
+
+  @@unique([orderId, kind])
+}
+
+// Stub de integración con el ERP "ofimática".
+model ErpSync {
+  id               String    @id @default(cuid())
+  orderId          String    @unique
+  order            Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  nPedidoOfimatica String?
+  estadoEnvio      String?
+  fechaEnvio       DateTime?
+  fechaTapiceria   DateTime?
+  fechaListo       DateTime?
+  fechaDespacho    DateTime?
+  notasGenerales   String?
 }
 
 // Firma electrónica remota del cliente para aprobar una cotización.
@@ -362,6 +438,8 @@ model LineItem {
   id                    String   @id @default(cuid())
   quoteId               String?
   quote                 Quote?   @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  orderId               String?
+  order                 Order?   @relation(fields: [orderId], references: [id], onDelete: Cascade)
   productId             String?
   product               Product? @relation(fields: [productId], references: [id])
   imagen                String?

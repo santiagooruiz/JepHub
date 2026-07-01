@@ -459,6 +459,49 @@ async function main() {
     });
   }
 
+  // ── Pedido de ejemplo (desde la cotización #2 aprobada) ──
+  const q2 = await db.quote.findUnique({
+    where: { companyId_numero: { companyId: company.id, numero: 2 } },
+    include: { items: true, order: { select: { id: true } } },
+  });
+  if (q2 && !q2.order) {
+    await db.order.create({
+      data: {
+        companyId: company.id,
+        numero: 1,
+        clientId: q2.clientId,
+        opportunityId: q2.opportunityId,
+        quoteId: q2.id,
+        advisorId: q2.registeredById,
+        estado: "Pendiente Ingreso",
+        formaPago: q2.formaPago,
+        direccionEnvio: q2.direccionEnvio,
+        subtotal: q2.subtotal,
+        impuesto: q2.impuesto,
+        total: q2.total,
+        items: {
+          create: q2.items.map((it) => ({
+            productId: it.productId,
+            referencia: it.referencia,
+            descripcion: it.descripcion,
+            precio: it.precio,
+            cantidad: it.cantidad,
+            descuentoPct: it.descuentoPct,
+            precioConDesc: it.precioConDesc,
+            acabados: it.acabados,
+            total: it.total,
+          })),
+        },
+        approvals: {
+          create: (["INGRESO", "FABRICACION", "INSTALACION", "FACTURACION"] as const).map(
+            (kind) => ({ kind })
+          ),
+        },
+        erpSync: { create: {} },
+      },
+    });
+  }
+
   // ── Contacto y actividades de ejemplo (cliente #1) ──
   const client1 = await db.client.findUnique({
     where: { companyId_numero: { companyId: company.id, numero: 1 } },
@@ -517,6 +560,7 @@ async function main() {
     opportunities: await db.opportunity.count(),
     products: await db.product.count(),
     quotes: await db.quote.count(),
+    orders: await db.order.count(),
     contacts: await db.contact.count(),
     activities: await db.activity.count(),
   };

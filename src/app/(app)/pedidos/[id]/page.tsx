@@ -1,22 +1,27 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ChevronLeft, Pencil, FileText } from "lucide-react";
+import { ChevronLeft } from "lucide-react";
 
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/guard";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { clientDisplayName } from "@/features/clients/queries";
-import { quoteEstadoVariant, formatMoney } from "@/features/quotes/types";
-import { QuoteStateSelect } from "@/features/quotes/state-select";
-import { SignaturePanel } from "@/features/quotes/signature-panel";
-import { GenerateOrderButton } from "@/features/orders/order-controls";
+import { formatMoney } from "@/features/quotes/types";
+import { orderEstadoVariant } from "@/features/orders/types";
+import {
+  OrderStateSelect,
+  ApprovalsPanel,
+  OfimaticaPanel,
+} from "@/features/orders/order-controls";
 import { RegisterActivity } from "@/features/activity/register-activity";
 import { Timeline } from "@/features/activity/timeline";
 
 export const dynamic = "force-dynamic";
 
+function fmtDate(d: Date | null): string | null {
+  return d ? d.toLocaleDateString("es-CO") : null;
+}
 function Info({ label, value }: { label: string; value?: string | null }) {
   return (
     <div className="text-sm">
@@ -26,31 +31,31 @@ function Info({ label, value }: { label: string; value?: string | null }) {
   );
 }
 
-export default async function CotizacionDetallePage({
+export default async function PedidoDetallePage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const user = await requirePermission("view", "quotes");
-  const canEdit = user.ability.can("edit", "quotes");
+  const user = await requirePermission("view", "orders");
+  const canEdit = user.ability.can("edit", "orders");
   const { id } = await params;
 
-  const q = await db.quote.findFirst({
+  const o = await db.order.findFirst({
     where: { id, companyId: user.companyId, deletedAt: null },
     include: {
       client: true,
-      opportunity: { select: { id: true, numero: true, nombre: true } },
-      registeredBy: { select: { name: true } },
+      advisor: { select: { name: true } },
+      quote: { select: { numero: true } },
       items: true,
-      signature: { select: { estado: true } },
-      order: { select: { id: true } },
+      approvals: { include: { approvedBy: { select: { name: true } } } },
+      erpSync: true,
     },
   });
-  if (!q) notFound();
+  if (!o) notFound();
 
   const [activities, param] = await Promise.all([
     db.activity.findMany({
-      where: { quoteId: q.id, companyId: user.companyId },
+      where: { orderId: o.id, companyId: user.companyId },
       include: { user: { select: { name: true } } },
       orderBy: { fechaHora: "desc" },
     }),
@@ -67,59 +72,39 @@ export default async function CotizacionDetallePage({
   return (
     <div>
       <Link
-        href="/cotizaciones"
+        href="/pedidos"
         className="mb-1 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
       >
-        <ChevronLeft className="size-4" /> Cotizaciones
+        <ChevronLeft className="size-4" /> Pedidos
       </Link>
 
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <h1 className="text-2xl font-semibold tracking-tight">
-            Cotización N° {q.numero}
+            Pedido N° {o.numero}
           </h1>
-          <Badge variant={quoteEstadoVariant(q.estado)}>{q.estado}</Badge>
+          <Badge variant={orderEstadoVariant(o.estado)}>{o.estado}</Badge>
+          <Badge variant="secondary">{o.tipoProducto}</Badge>
         </div>
-        <div className="flex items-center gap-2">
-          {canEdit && <QuoteStateSelect id={q.id} estado={q.estado} />}
-          <Button asChild variant="outline">
-            <a
-              href={`/print/cotizacion/${q.id}`}
-              target="_blank"
-              rel="noreferrer"
-            >
-              <FileText className="size-4" /> PDF
-            </a>
-          </Button>
-          {canEdit && (
-            <Button asChild variant="outline">
-              <Link href={`/cotizaciones/${q.id}/editar`}>
-                <Pencil className="size-4" /> Editar
-              </Link>
-            </Button>
-          )}
-        </div>
+        {canEdit && <OrderStateSelect id={o.id} estado={o.estado} />}
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_340px]">
         {/* Documento */}
         <Card className="p-4">
           <div className="mb-4 grid grid-cols-1 gap-1 sm:grid-cols-2">
-            <Info label="Cliente" value={clientDisplayName(q.client)} />
-            <Info label="Registrado por" value={q.registeredBy?.name} />
-            <Info label="Oportunidad" value={q.opportunity?.nombre} />
-            <Info label="Forma de pago" value={q.formaPago} />
-            <Info label="Tiempo de entrega" value={q.tiempoEntrega} />
+            <Info label="Cliente" value={clientDisplayName(o.client)} />
+            <Info label="Asesor" value={o.advisor?.name} />
             <Info
-              label="Vencimiento"
-              value={
-                q.fechaVencimiento
-                  ? q.fechaVencimiento.toLocaleDateString("es-CO")
-                  : null
-              }
+              label="Cotización origen"
+              value={o.quote ? `N° ${o.quote.numero}` : null}
             />
-            <Info label="Orden de compra" value={q.ordenCompra} />
-            <Info label="Dirección de envío" value={q.direccionEnvio} />
+            <Info label="Forma de pago" value={o.formaPago} />
+            <Info label="Dirección de envío" value={o.direccionEnvio} />
+            <Info
+              label="Requiere instalación"
+              value={o.requiereInstalacion ? "Sí" : "No"}
+            />
           </div>
 
           <div className="overflow-x-auto rounded-lg border">
@@ -130,12 +115,11 @@ export default async function CotizacionDetallePage({
                   <th className="px-3 py-2 font-medium">Descripción</th>
                   <th className="px-3 py-2 text-right font-medium">Precio</th>
                   <th className="px-3 py-2 text-right font-medium">Cant.</th>
-                  <th className="px-3 py-2 text-right font-medium">Desc.%</th>
                   <th className="px-3 py-2 text-right font-medium">Total</th>
                 </tr>
               </thead>
               <tbody>
-                {q.items.map((it) => (
+                {o.items.map((it) => (
                   <tr key={it.id} className="border-b last:border-0 align-top">
                     <td className="px-3 py-2 font-medium">{it.referencia || "—"}</td>
                     <td className="px-3 py-2">
@@ -148,9 +132,6 @@ export default async function CotizacionDetallePage({
                       {formatMoney(Number(it.precio))}
                     </td>
                     <td className="px-3 py-2 text-right tabular">{it.cantidad}</td>
-                    <td className="px-3 py-2 text-right tabular">
-                      {Number(it.descuentoPct)}%
-                    </td>
                     <td className="px-3 py-2 text-right tabular font-medium whitespace-nowrap">
                       {formatMoney(Number(it.total))}
                     </td>
@@ -164,50 +145,55 @@ export default async function CotizacionDetallePage({
             <div className="w-64 space-y-1 text-sm">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Subtotal</span>
-                <span className="tabular">{formatMoney(Number(q.subtotal))}</span>
+                <span className="tabular">{formatMoney(Number(o.subtotal))}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">IVA (19%)</span>
-                <span className="tabular">{formatMoney(Number(q.impuesto))}</span>
+                <span className="tabular">{formatMoney(Number(o.impuesto))}</span>
               </div>
               <div className="flex justify-between border-t pt-1 text-base font-bold">
                 <span>Total</span>
-                <span className="tabular">{formatMoney(Number(q.total))}</span>
+                <span className="tabular">{formatMoney(Number(o.total))}</span>
               </div>
             </div>
           </div>
         </Card>
 
-        {/* Firma + Actividad */}
+        {/* Aprobaciones + ofimática + actividad */}
         <div className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Firma del cliente</CardTitle>
+              <CardTitle className="text-base">Aprobaciones</CardTitle>
             </CardHeader>
             <div className="px-4 pb-4">
-              <SignaturePanel
-                quoteId={q.id}
-                estado={q.signature?.estado ?? null}
+              <ApprovalsPanel
+                orderId={o.id}
+                approvals={o.approvals.map((a) => ({
+                  kind: a.kind,
+                  aprobado: a.aprobado,
+                  approvedBy: a.approvedBy?.name ?? null,
+                  fecha: fmtDate(a.fecha),
+                }))}
               />
             </div>
           </Card>
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Pedido</CardTitle>
+              <CardTitle className="text-base">Ofimática (ERP)</CardTitle>
             </CardHeader>
             <div className="px-4 pb-4">
-              {q.order ? (
-                <Button asChild variant="outline" className="w-full">
-                  <Link href={`/pedidos/${q.order.id}`}>Ver pedido</Link>
-                </Button>
-              ) : q.estado === "Aprobada" ? (
-                <GenerateOrderButton quoteId={q.id} />
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  Aprueba la cotización para generar el pedido.
-                </p>
-              )}
+              <OfimaticaPanel
+                orderId={o.id}
+                erp={{
+                  estadoEnvio: o.erpSync?.estadoEnvio ?? null,
+                  nPedidoOfimatica: o.erpSync?.nPedidoOfimatica ?? null,
+                  fechaEnvio: fmtDate(o.erpSync?.fechaEnvio ?? null),
+                  fechaTapiceria: fmtDate(o.erpSync?.fechaTapiceria ?? null),
+                  fechaListo: fmtDate(o.erpSync?.fechaListo ?? null),
+                  fechaDespacho: fmtDate(o.erpSync?.fechaDespacho ?? null),
+                }}
+              />
             </div>
           </Card>
 
@@ -216,9 +202,10 @@ export default async function CotizacionDetallePage({
               <CardTitle className="text-base">Registro de actividad</CardTitle>
             </CardHeader>
             <div className="px-4 pb-4">
-              <RegisterActivity entityType="QUOTE" entityId={q.id} acciones={acciones} />
+              <RegisterActivity entityType="ORDER" entityId={o.id} acciones={acciones} />
             </div>
           </Card>
+
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Actividad</CardTitle>
