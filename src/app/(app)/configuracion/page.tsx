@@ -29,23 +29,23 @@ const SECTIONS = [
   {
     title: "Categorías",
     desc: "Catálogos parametrizables por entidad",
-    href: "#",
+    href: "/configuracion/categorias",
     icon: FolderTree,
-    ready: false,
+    ready: true,
   },
   {
     title: "Tags",
     desc: "Etiquetas de clasificación",
-    href: "#",
+    href: "/configuracion/tags",
     icon: Tag,
-    ready: false,
+    ready: true,
   },
   {
     title: "Parámetros",
     desc: "Estados y enums del sistema",
-    href: "#",
+    href: "/configuracion/parametros",
     icon: SlidersHorizontal,
-    ready: false,
+    ready: true,
   },
 ];
 

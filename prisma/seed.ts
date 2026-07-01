@@ -208,11 +208,87 @@ async function main() {
     });
   }
 
+  // ── Parámetros (estados/enums como config JSON con icon/color) ──
+  const PARAMETERS: { key: string; value: unknown }[] = [
+    {
+      key: "action_activities",
+      value: [
+        { id: "presentacion-virtual", value: "Presentación Virtual", icon: "fa-desktop", color: "green" },
+        { id: "llamada", value: "Llamada", icon: "fa-phone", color: "green" },
+        { id: "visita", value: "Visita", icon: "fa-location-arrow", color: "green" },
+        { id: "email", value: "Email", icon: "fa-envelope", color: "green" },
+        { id: "observacion", value: "Observación", icon: "fa-eye", color: "green" },
+      ],
+    },
+    {
+      key: "approved_types",
+      value: [
+        { id: "0", value: "PENDIENTE", color: "amber" },
+        { id: "1", value: "APROBADO", color: "green" },
+        { id: "2", value: "NO APROBADA", color: "red" },
+        { id: "3", value: "DETENIDO", color: "muted" },
+      ],
+    },
+    {
+      key: "client_states",
+      value: [
+        { id: "prospecto", value: "Prospecto", color: "muted" },
+        { id: "gestion", value: "Gestión Cotización", color: "amber" },
+        { id: "cliente", value: "Cliente", color: "green" },
+        { id: "perdida", value: "Gestión Perdida", color: "red" },
+      ],
+    },
+  ];
+  for (const p of PARAMETERS) {
+    await db.parameter.upsert({
+      where: { companyId_key: { companyId: company.id, key: p.key } },
+      update: { value: p.value as object },
+      create: { companyId: company.id, key: p.key, value: p.value as object },
+    });
+  }
+
+  // ── Categorías (parametrizables por entidad) ──
+  const CATEGORIES: { entity: string; name: string }[] = [
+    { entity: "channel", name: "Página Web" },
+    { entity: "channel", name: "Redes sociales" },
+    { entity: "channel", name: "Teléfono" },
+    { entity: "channel", name: "Correo" },
+    { entity: "channel", name: "Whatsapp" },
+    { entity: "client", name: "Cliente" },
+    { entity: "client", name: "Prospecto" },
+    { entity: "client", name: "Contacto" },
+  ];
+  for (const c of CATEGORIES) {
+    await db.category.upsert({
+      where: {
+        companyId_entity_name: {
+          companyId: company.id,
+          entity: c.entity,
+          name: c.name,
+        },
+      },
+      update: {},
+      create: { companyId: company.id, entity: c.entity, name: c.name },
+    });
+  }
+
+  // ── Tags ──
+  for (const name of ["Empleado", "Independiente", "Pensionado"]) {
+    await db.tag.upsert({
+      where: { companyId_name: { companyId: company.id, name } },
+      update: {},
+      create: { companyId: company.id, name },
+    });
+  }
+
   const counts = {
     roles: await db.role.count(),
     permissions: await db.permission.count(),
     rolePermissions: await db.rolePermission.count(),
     users: await db.user.count(),
+    parameters: await db.parameter.count(),
+    categories: await db.category.count(),
+    tags: await db.tag.count(),
   };
   console.log("Seed completado:", counts);
 }

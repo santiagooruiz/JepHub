@@ -19,11 +19,51 @@ enum UserStatus {
 
 // ─────────────────────────── Tenancy ───────────────────────────
 model Company {
+  id         String      @id @default(cuid())
+  name       String
+  createdAt  DateTime    @default(now())
+  users      User[]
+  roles      Role[]
+  parameters Parameter[]
+  categories Category[]
+  tags       Tag[]
+}
+
+// ─────────────────────────── Config & Catálogos ───────────────────────────
+
+// Store clave-valor JSON que define enums/estados del sistema (con icon/color).
+model Parameter {
   id        String   @id @default(cuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id])
+  key       String
+  value     Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([companyId, key])
+}
+
+// Catálogo genérico parametrizable por entidad (channel, client, ...).
+model Category {
+  id        String   @id @default(cuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id])
+  entity    String
   name      String
   createdAt DateTime @default(now())
-  users     User[]
-  roles     Role[]
+
+  @@unique([companyId, entity, name])
+}
+
+model Tag {
+  id        String   @id @default(cuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id])
+  name      String
+  createdAt DateTime @default(now())
+
+  @@unique([companyId, name])
 }
 
 // ─────────────────────────── Seguridad (RBAC) ───────────────────────────
