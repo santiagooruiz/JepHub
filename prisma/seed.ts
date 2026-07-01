@@ -281,6 +281,64 @@ async function main() {
     });
   }
 
+  // ── Listas de precio ──
+  for (const name of ["Usuario Final", "Distribuidor", "Institucional"]) {
+    await db.priceList.upsert({ where: { name }, update: {}, create: { name } });
+  }
+
+  // ── Sectores y subsectores ──
+  const SECTORS: { name: string; subs: string[] }[] = [
+    { name: "CORPORATIVO", subs: ["MINERALES NO METALICOS", "SERVICIOS", "MANUFACTURA"] },
+    { name: "INSTITUCIONAL", subs: ["EDUCACIÓN", "SALUD", "GOBIERNO"] },
+    { name: "COMERCIAL", subs: ["RETAIL", "HOTELERÍA"] },
+  ];
+  for (const s of SECTORS) {
+    const sector = await db.sector.upsert({
+      where: { name: s.name },
+      update: {},
+      create: { name: s.name },
+    });
+    for (const sub of s.subs) {
+      await db.subSector.upsert({
+        where: { sectorId_name: { sectorId: sector.id, name: sub } },
+        update: {},
+        create: { sectorId: sector.id, name: sub },
+      });
+    }
+  }
+
+  // ── Clientes de ejemplo (anonimizados) ──
+  const asesor = roleByName.get("Asesor");
+  const asesorUser = await db.user.findFirst({
+    where: { companyId: company.id, roleId: asesor?.id },
+  });
+  const usuarioFinal = await db.priceList.findUnique({ where: { name: "Usuario Final" } });
+  const corporativo = await db.sector.findUnique({ where: { name: "CORPORATIVO" } });
+
+  const SAMPLE_CLIENTS = [
+    { numero: 1, personType: "JURIDICA" as const, razonSocial: "Comercial Andina S.A.S", nombreComercial: "Andina", email: "contacto@ejemplo-andina.co", telefono: "+57 300 0000001", tipoDocumento: "NIT", numeroDocumento: "900000001-1", ciudad: "Medellín", canal: "Página Web", estado: "Cliente" },
+    { numero: 2, personType: "JURIDICA" as const, razonSocial: "Inversiones del Valle Ltda", nombreComercial: "Del Valle", email: "info@ejemplo-valle.co", telefono: "+57 300 0000002", tipoDocumento: "NIT", numeroDocumento: "900000002-2", ciudad: "Cali", canal: "Redes sociales", estado: "Gestión Cotización" },
+    { numero: 3, personType: "NATURAL" as const, nombres: "Cliente", apellidos: "Ejemplo Uno", email: "persona1@ejemplo.co", telefono: "+57 300 0000003", tipoDocumento: "CC", numeroDocumento: "1000000003", ciudad: "Bogotá", canal: "Whatsapp", estado: "Prospecto" },
+    { numero: 4, personType: "JURIDICA" as const, razonSocial: "Muebles Corporativos S.A", nombreComercial: "MueblesCorp", email: "ventas@ejemplo-mc.co", telefono: "+57 300 0000004", tipoDocumento: "NIT", numeroDocumento: "900000004-4", ciudad: "Barranquilla", canal: "Teléfono", estado: "Cliente" },
+    { numero: 5, personType: "JURIDICA" as const, razonSocial: "Distribuciones Norte S.A.S", nombreComercial: "Norte", email: "compras@ejemplo-norte.co", telefono: "+57 300 0000005", tipoDocumento: "NIT", numeroDocumento: "900000005-5", ciudad: "Bucaramanga", canal: "Correo", estado: "Gestión Perdida" },
+    { numero: 6, personType: "NATURAL" as const, nombres: "Cliente", apellidos: "Ejemplo Dos", email: "persona2@ejemplo.co", telefono: "+57 300 0000006", tipoDocumento: "CC", numeroDocumento: "1000000006", ciudad: "Medellín", canal: "Página Web", estado: "Prospecto" },
+  ];
+  for (const c of SAMPLE_CLIENTS) {
+    await db.client.upsert({
+      where: { companyId_numero: { companyId: company.id, numero: c.numero } },
+      update: {},
+      create: {
+        companyId: company.id,
+        advisorId: asesorUser?.id,
+        priceListId: usuarioFinal?.id,
+        sectorId: corporativo?.id,
+        pais: "Colombia",
+        ultimaInteraccion: new Date(Date.now() - c.numero * 86400000),
+        ...c,
+      },
+    });
+  }
+
   const counts = {
     roles: await db.role.count(),
     permissions: await db.permission.count(),
@@ -289,6 +347,9 @@ async function main() {
     parameters: await db.parameter.count(),
     categories: await db.category.count(),
     tags: await db.tag.count(),
+    priceLists: await db.priceList.count(),
+    sectors: await db.sector.count(),
+    clients: await db.client.count(),
   };
   console.log("Seed completado:", counts);
 }

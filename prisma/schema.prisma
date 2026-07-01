@@ -17,6 +17,11 @@ enum UserStatus {
   PASSWORD_CHANGE
 }
 
+enum PersonType {
+  NATURAL
+  JURIDICA
+}
+
 // ─────────────────────────── Tenancy ───────────────────────────
 model Company {
   id         String      @id @default(cuid())
@@ -27,6 +32,7 @@ model Company {
   parameters Parameter[]
   categories Category[]
   tags       Tag[]
+  clients    Client[]
 }
 
 // ─────────────────────────── Config & Catálogos ───────────────────────────
@@ -117,4 +123,83 @@ model User {
   lastLoginAt      DateTime?
   createdAt        DateTime   @default(now())
   updatedAt        DateTime   @updatedAt
+  clientsAdvised   Client[]   @relation("ClientAdvisor")
+}
+
+// ─────────────────────────── Clientes ───────────────────────────
+model Client {
+  id                   String     @id @default(cuid())
+  companyId            String
+  company              Company    @relation(fields: [companyId], references: [id])
+  numero               Int
+  personType           PersonType @default(JURIDICA)
+  estado               String     @default("Prospecto")
+  // Persona Natural
+  nombres              String?
+  apellidos            String?
+  // Persona Jurídica
+  nombreComercial      String?
+  razonSocial          String?
+  // Comunes
+  email                String?
+  telefono             String?
+  tipoDocumento        String?
+  numeroDocumento      String?
+  direccion            String?
+  complementoDireccion String?
+  pais                 String?    @default("Colombia")
+  ciudad               String?
+  observaciones        String?
+  priceListId          String?
+  priceList            PriceList? @relation(fields: [priceListId], references: [id])
+  sectorId             String?
+  sector               Sector?    @relation(fields: [sectorId], references: [id])
+  subSectorId          String?
+  subSector            SubSector? @relation(fields: [subSectorId], references: [id])
+  canal                String?
+  saldoCartera         Decimal?   @db.Decimal(15, 2)
+  advisorId            String?
+  advisor              User?      @relation("ClientAdvisor", fields: [advisorId], references: [id])
+  ultimaInteraccion    DateTime?
+  createdAt            DateTime   @default(now())
+  updatedAt            DateTime   @updatedAt
+  deletedAt            DateTime?
+  contacts             Contact[]
+
+  @@unique([companyId, numero])
+  @@index([companyId, estado])
+}
+
+model Contact {
+  id          String  @id @default(cuid())
+  clientId    String
+  client      Client  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  nombre      String
+  email       String?
+  telefono    String?
+  cargo       String?
+  observacion String?
+}
+
+model Sector {
+  id         String      @id @default(cuid())
+  name       String      @unique
+  subsectors SubSector[]
+  clients    Client[]
+}
+
+model SubSector {
+  id       String   @id @default(cuid())
+  name     String
+  sectorId String
+  sector   Sector   @relation(fields: [sectorId], references: [id])
+  clients  Client[]
+
+  @@unique([sectorId, name])
+}
+
+model PriceList {
+  id      String   @id @default(cuid())
+  name    String   @unique
+  clients Client[]
 }
