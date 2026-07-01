@@ -24,7 +24,15 @@ CRM propio para **JEP Mobiliari** (sector mobiliario): gestión de clientes/pros
 
 ## 🚦 Estado
 
-✅ **Sprint 0** (fundaciones) y **Sprint 1** (multi-tenant + auth + RBAC) completos: login real con sesión JWT, guard por permisos (CASL), menú filtrado por rol, y pantallas de Usuarios/Roles. Próximo: **Sprint 2** (Configuración: Parámetros, Categorías, Tags).
+✅ **MVP completo (S0–S6).** Ciclo comercial de punta a punta:
+`Cliente → Oportunidad → Cotización → [firma del cliente] → Pedido → aprobaciones → ofimática`.
+
+- **S0** Fundaciones · **S1** Multi-tenant + Auth (JWT) + RBAC (CASL)
+- **S2** Configuración (Parámetros/Categorías/Tags) · **S3** Clientes (ficha 360°, contactos, actividad, adjuntos)
+- **S4** Oportunidades (listado, CRUD, **Kanban**) · **S5** Cotizaciones (constructor con totales, PDF, **firma del cliente**)
+- **S6** Pedidos (desde cotización aprobada, cadena de aprobaciones, stub ofimática)
+
+Fase 2 (pendiente): integración real ofimática, Backlog Diseño, Biblioteca Especiales, Reportes/BI, despliegue Docker. Ver [docs/PLAN-IMPLEMENTACION.md](docs/PLAN-IMPLEMENTACION.md).
 
 > **Usuarios demo** (seed) · contraseña `jep12345`: `sistemas@jepmobiliari.com` (Administrador), `asesor.demo@jepmobiliari.com` (Asesor), `disenador.demo@jepmobiliari.com` (Diseñador).
 
