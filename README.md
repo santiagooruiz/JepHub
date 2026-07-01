@@ -11,6 +11,7 @@ CRM propio para **JEP Mobiliari** (sector mobiliario): gestión de clientes/pros
 | [docs/ESPEC-FUNCIONAL.md](docs/ESPEC-FUNCIONAL.md) | Especificación funcional completa (16 módulos): sitemap, inventario de pantallas, spec por módulo, modelo de datos, sistema de diseño y priorización MVP |
 | [docs/ARQUITECTURA-DESPLIEGUE.md](docs/ARQUITECTURA-DESPLIEGUE.md) | Arquitectura de despliegue (Windows Server 2019 + Docker + reverse proxy, backups, seguridad) |
 | [docs/SISTEMA-DISENO.md](docs/SISTEMA-DISENO.md) | Sistema de diseño objetivo (tokens claro/oscuro, tipografía, densidad, componentes) |
+| [docs/PLAN-IMPLEMENTACION.md](docs/PLAN-IMPLEMENTACION.md) | Plan de implementación: esquema Prisma, estructura de carpetas y sprints del MVP |
 
 ## 🧱 Stack
 
