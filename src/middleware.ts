@@ -20,8 +20,10 @@ export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const authed = await hasValidSession(req.cookies.get(COOKIE)?.value);
   const isLogin = pathname === "/login";
+  // Rutas públicas (sin sesión): login y la firma del cliente.
+  const isPublic = isLogin || pathname.startsWith("/firma");
 
-  if (!authed && !isLogin) {
+  if (!authed && !isPublic) {
     const url = req.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);

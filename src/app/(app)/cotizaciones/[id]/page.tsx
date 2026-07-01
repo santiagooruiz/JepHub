@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ChevronLeft, Pencil } from "lucide-react";
+import { ChevronLeft, Pencil, FileText } from "lucide-react";
 
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/guard";
@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { clientDisplayName } from "@/features/clients/queries";
 import { quoteEstadoVariant, formatMoney } from "@/features/quotes/types";
 import { QuoteStateSelect } from "@/features/quotes/state-select";
+import { SignaturePanel } from "@/features/quotes/signature-panel";
 import { RegisterActivity } from "@/features/activity/register-activity";
 import { Timeline } from "@/features/activity/timeline";
 
@@ -40,6 +41,7 @@ export default async function CotizacionDetallePage({
       opportunity: { select: { id: true, numero: true, nombre: true } },
       registeredBy: { select: { name: true } },
       items: true,
+      signature: { select: { estado: true } },
     },
   });
   if (!q) notFound();
@@ -78,6 +80,15 @@ export default async function CotizacionDetallePage({
         </div>
         <div className="flex items-center gap-2">
           {canEdit && <QuoteStateSelect id={q.id} estado={q.estado} />}
+          <Button asChild variant="outline">
+            <a
+              href={`/print/cotizacion/${q.id}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <FileText className="size-4" /> PDF
+            </a>
+          </Button>
           {canEdit && (
             <Button asChild variant="outline">
               <Link href={`/cotizaciones/${q.id}/editar`}>
@@ -165,8 +176,20 @@ export default async function CotizacionDetallePage({
           </div>
         </Card>
 
-        {/* Actividad */}
+        {/* Firma + Actividad */}
         <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Firma del cliente</CardTitle>
+            </CardHeader>
+            <div className="px-4 pb-4">
+              <SignaturePanel
+                quoteId={q.id}
+                estado={q.signature?.estado ?? null}
+              />
+            </div>
+          </Card>
+
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Registro de actividad</CardTitle>

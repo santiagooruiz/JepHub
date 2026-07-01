@@ -447,6 +447,18 @@ async function main() {
     });
   }
 
+  // ── Firma de ejemplo (cotización #1, token conocido para pruebas) ──
+  const q1 = await db.quote.findUnique({
+    where: { companyId_numero: { companyId: company.id, numero: 1 } },
+  });
+  if (q1) {
+    await db.signature.upsert({
+      where: { quoteId: q1.id },
+      update: {},
+      create: { quoteId: q1.id, token: "demo-firma-token" },
+    });
+  }
+
   // ── Contacto y actividades de ejemplo (cliente #1) ──
   const client1 = await db.client.findUnique({
     where: { companyId_numero: { companyId: company.id, numero: 1 } },

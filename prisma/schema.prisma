@@ -339,9 +339,23 @@ model Quote {
   updatedAt        DateTime     @updatedAt
   deletedAt        DateTime?
   items            LineItem[]
+  signature        Signature?
 
   @@unique([companyId, numero])
   @@index([companyId, estado])
+}
+
+// Firma electrónica remota del cliente para aprobar una cotización.
+model Signature {
+  id             String    @id @default(cuid())
+  quoteId        String    @unique
+  quote          Quote     @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  token          String    @unique
+  estado         String    @default("pendiente") // pendiente | firmada | rechazada
+  firmanteNombre String?
+  firmanteEmail  String?
+  firmadaEn      DateTime?
+  createdAt      DateTime  @default(now())
 }
 
 model LineItem {
