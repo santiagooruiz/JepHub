@@ -9,7 +9,8 @@ services:
       POSTGRES_PASSWORD: jep
       POSTGRES_DB: jephub
     ports:
-      - "5432:5432"
+      # 5433 en el host para no chocar con un PostgreSQL nativo en 5432.
+      - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
 

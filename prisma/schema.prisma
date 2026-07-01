@@ -1,6 +1,6 @@
-// Esquema Prisma — Sprint 0 (mínimo, fundacional).
-// El esquema v1 completo (todas las entidades) está en docs/PLAN-IMPLEMENTACION.md
-// y se irá materializando en los Sprints 1–3.
+// Esquema Prisma — Sprint 1 (multi-tenant + RBAC).
+// El esquema v1 completo (dominio CRM) está en docs/PLAN-IMPLEMENTACION.md
+// y se irá materializando en los Sprints 3+.
 
 generator client {
   provider = "prisma-client-js"
@@ -17,28 +17,64 @@ enum UserStatus {
   PASSWORD_CHANGE
 }
 
+// ─────────────────────────── Tenancy ───────────────────────────
 model Company {
   id        String   @id @default(cuid())
   name      String
   createdAt DateTime @default(now())
   users     User[]
+  roles     Role[]
 }
 
+// ─────────────────────────── Seguridad (RBAC) ───────────────────────────
 model Role {
-  id    String @id @default(cuid())
-  name  String @unique
-  users User[]
+  id          String           @id @default(cuid())
+  companyId   String
+  company     Company          @relation(fields: [companyId], references: [id])
+  name        String
+  seatLimit   Int? // cupo/licenciamiento (usados / límite)
+  users       User[]
+  permissions RolePermission[]
+
+  @@unique([companyId, name])
 }
 
+model Permission {
+  id    String           @id @default(cuid())
+  key   String           @unique // {modulo}.{accion} → clients.create
+  name  String // etiqueta legible ("Crear Cliente")
+  roles RolePermission[]
+}
+
+// Permiso × Rol, con restricción/scope por rol.
+model RolePermission {
+  roleId       String
+  permissionId String
+  active       Boolean    @default(false)
+  restriction  String? // scope, p.ej. "own" (solo registros propios)
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+}
+
+// ─────────────────────────── Usuarios ───────────────────────────
 model User {
-  id           String     @id @default(cuid())
-  companyId    String
-  company      Company    @relation(fields: [companyId], references: [id])
-  name         String
-  email        String     @unique
-  passwordHash String
-  roleId       String?
-  role         Role?      @relation(fields: [roleId], references: [id])
-  status       UserStatus @default(ACTIVE)
-  createdAt    DateTime   @default(now())
+  id               String     @id @default(cuid())
+  companyId        String
+  company          Company    @relation(fields: [companyId], references: [id])
+  name             String
+  email            String     @unique
+  passwordHash     String?
+  roleId           String?
+  role             Role?      @relation(fields: [roleId], references: [id])
+  language         String     @default("es")
+  status           UserStatus @default(ACTIVE)
+  cargoActual      String?
+  numeroDocumento  String?
+  numeroTelefonico String?
+  codven           String? // código vendedor (ERP ofimática)
+  lastLoginAt      DateTime?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
 }
