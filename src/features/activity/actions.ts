@@ -49,6 +49,14 @@ export async function registerActivity(input: unknown): Promise<ActionResult> {
     if (!found) return { ok: false, error: "Registro no encontrado." };
     fk = { opportunityId: entityId };
     path = `/oportunidades/${entityId}`;
+  } else if (entityType === "QUOTE") {
+    const found = await db.quote.findFirst({
+      where: { id: entityId, companyId: user.companyId },
+      select: { id: true },
+    });
+    if (!found) return { ok: false, error: "Registro no encontrado." };
+    fk = { quoteId: entityId };
+    path = `/cotizaciones/${entityId}`;
   } else {
     return { ok: false, error: "Entidad no soportada aún." };
   }

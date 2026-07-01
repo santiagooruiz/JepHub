@@ -47,6 +47,8 @@ model Company {
   tags          Tag[]
   clients       Client[]
   opportunities Opportunity[]
+  quotes        Quote[]
+  products      Product[]
 }
 
 // ─────────────────────────── Config & Catálogos ───────────────────────────
@@ -140,6 +142,7 @@ model User {
   clientsAdvised     Client[]      @relation("ClientAdvisor")
   activities         Activity[]
   opportunitiesAdvised Opportunity[] @relation("OppAdvisor")
+  quotesRegistered   Quote[]       @relation("QuoteRegisteredBy")
 }
 
 // ─────────────────────────── Clientes ───────────────────────────
@@ -184,6 +187,7 @@ model Client {
   activities           Activity[]
   attachments          Attachment[]
   opportunities        Opportunity[]
+  quotes               Quote[]
 
   @@unique([companyId, numero])
   @@index([companyId, estado])
@@ -219,6 +223,7 @@ model Opportunity {
   createdAt             DateTime   @default(now())
   updatedAt             DateTime   @updatedAt
   deletedAt             DateTime?
+  quotes                Quote[]
 
   @@unique([companyId, numero])
   @@index([companyId, estado])
@@ -285,4 +290,74 @@ model Attachment {
   createdAt     DateTime   @default(now())
 
   @@index([entityType, clientId])
+}
+
+// ─────────────────────────── Productos y Cotizaciones ───────────────────────────
+model Product {
+  id         String     @id @default(cuid())
+  companyId  String
+  company    Company    @relation(fields: [companyId], references: [id])
+  codigo     String
+  nombre     String
+  tipo       String?
+  referencia String?
+  imagen     String?
+  precioBase Decimal?   @db.Decimal(15, 2)
+  // Acabados por defecto (pueden quedar "POR DEFINIR")
+  formica    String?
+  canto      String?
+  herraje    String?
+  items      LineItem[]
+
+  @@unique([companyId, codigo])
+}
+
+// (interna: "proposal" en el CRM original)
+model Quote {
+  id               String       @id @default(cuid())
+  companyId        String
+  company          Company      @relation(fields: [companyId], references: [id])
+  numero           Int
+  clientId         String
+  client           Client       @relation(fields: [clientId], references: [id])
+  opportunityId    String?
+  opportunity      Opportunity? @relation(fields: [opportunityId], references: [id])
+  registeredById   String?
+  registeredBy     User?        @relation("QuoteRegisteredBy", fields: [registeredById], references: [id])
+  estado           String       @default("Pendiente cotización")
+  probabilidad     CloseProb    @default(UNDEFINED)
+  formaPago        String?
+  tiempoEntrega    String?
+  ordenCompra      String?
+  direccionEnvio   String?
+  observacion      String?
+  fechaVencimiento DateTime?
+  subtotal         Decimal      @default(0) @db.Decimal(15, 2)
+  impuesto         Decimal      @default(0) @db.Decimal(15, 2)
+  total            Decimal      @default(0) @db.Decimal(15, 2)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  deletedAt        DateTime?
+  items            LineItem[]
+
+  @@unique([companyId, numero])
+  @@index([companyId, estado])
+}
+
+model LineItem {
+  id                    String   @id @default(cuid())
+  quoteId               String?
+  quote                 Quote?   @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  productId             String?
+  product               Product? @relation(fields: [productId], references: [id])
+  imagen                String?
+  referencia            String?
+  descripcion           String?
+  precio                Decimal  @db.Decimal(15, 2)
+  cantidad              Int
+  descuentoPct          Decimal  @default(0) @db.Decimal(5, 2)
+  precioConDesc         Decimal  @db.Decimal(15, 2)
+  acabados              String?
+  observacionesInternas String?
+  total                 Decimal  @db.Decimal(15, 2)
 }

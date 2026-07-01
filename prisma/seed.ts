@@ -370,6 +370,83 @@ async function main() {
     });
   }
 
+  // ── Productos (catálogo) ──
+  const PRODUCTS = [
+    { codigo: "S60120U25", nombre: "Superficie FORM. CAT.1 CON BALANCE 25mm 0.60x1.20", precioBase: 6227660, tipo: "principal", formica: "POR DEFINIR", canto: "POR DEFINIR" },
+    { codigo: "PMS-120", nombre: "PATA MARK SENCILLA DE 1.20 PINTADA", precioBase: 2277740, tipo: "accesorio" },
+    { codigo: "CALL-CENTER", nombre: "PUESTO CALL CENTER", precioBase: 4843930, tipo: "principal" },
+    { codigo: "SILLA-MEGA", nombre: "SILLA MEGA TAP MALLA C/BRAZOS FIJOS", precioBase: 526700, tipo: "accesorio" },
+    { codigo: "FLETE", nombre: "FLETE / TRANSPORTE", precioBase: 74510, tipo: "servicio" },
+  ];
+  for (const p of PRODUCTS) {
+    await db.product.upsert({
+      where: { companyId_codigo: { companyId: company.id, codigo: p.codigo } },
+      update: {},
+      create: { companyId: company.id, ...p },
+    });
+  }
+
+  // ── Cotizaciones de ejemplo (con ítems y totales) ──
+  const opps = await db.opportunity.findMany({
+    where: { companyId: company.id },
+    orderBy: { numero: "asc" },
+  });
+  const products = await db.product.findMany({ where: { companyId: company.id } });
+  const prodByCodigo = new Map(products.map((p) => [p.codigo, p]));
+
+  function itemFrom(codigo: string, cantidad: number, descuentoPct = 0) {
+    const p = prodByCodigo.get(codigo);
+    const precio = Number(p?.precioBase ?? 0);
+    const precioConDesc = precio * (1 - descuentoPct / 100);
+    return {
+      productId: p?.id,
+      referencia: p?.codigo,
+      descripcion: p?.nombre,
+      precio,
+      cantidad,
+      descuentoPct,
+      precioConDesc,
+      acabados: p?.formica ? `FORMICA: ${p.formica}` : null,
+      total: precioConDesc * cantidad,
+    };
+  }
+
+  const QUOTES: {
+    numero: number;
+    oppIdx: number;
+    estado: string;
+    items: [string, number, number?][];
+  }[] = [
+    { numero: 1, oppIdx: 0, estado: "Pendiente Aprobación", items: [["CALL-CENTER", 3], ["PMS-120", 1], ["FLETE", 2]] },
+    { numero: 2, oppIdx: 1, estado: "Aprobada", items: [["SILLA-MEGA", 3, 40], ["FLETE", 1]] },
+  ];
+  for (const q of QUOTES) {
+    const existing = await db.quote.findUnique({
+      where: { companyId_numero: { companyId: company.id, numero: q.numero } },
+    });
+    if (existing || !opps[q.oppIdx]) continue;
+    const opp = opps[q.oppIdx];
+    const items = q.items.map(([c, cant, desc]) => itemFrom(c, cant, desc ?? 0));
+    const subtotal = items.reduce((s, i) => s + i.total, 0);
+    const impuesto = subtotal * 0.19;
+    await db.quote.create({
+      data: {
+        companyId: company.id,
+        numero: q.numero,
+        clientId: opp.clientId,
+        opportunityId: opp.id,
+        registeredById: asesorUser?.id,
+        estado: q.estado,
+        formaPago: "50% ANTICIPO",
+        tiempoEntrega: "15 DÍAS HÁBILES",
+        subtotal,
+        impuesto,
+        total: subtotal + impuesto,
+        items: { create: items },
+      },
+    });
+  }
+
   // ── Contacto y actividades de ejemplo (cliente #1) ──
   const client1 = await db.client.findUnique({
     where: { companyId_numero: { companyId: company.id, numero: 1 } },
@@ -426,6 +503,8 @@ async function main() {
     sectors: await db.sector.count(),
     clients: await db.client.count(),
     opportunities: await db.opportunity.count(),
+    products: await db.product.count(),
+    quotes: await db.quote.count(),
     contacts: await db.contact.count(),
     activities: await db.activity.count(),
   };
