@@ -17,14 +17,16 @@ CRM propio para **JEP Mobiliari** (sector mobiliario): gestión de clientes/pros
 
 - **Frontend/Backend:** Next.js 15 (App Router) + React 19 + TypeScript
 - **Base de datos:** PostgreSQL + Prisma
-- **Auth & multi-tenant:** better-auth · **RBAC:** CASL
+- **Auth:** sesión propia (bcrypt + JWT httpOnly con `jose`) · **Multi-tenant** por `companyId` · **RBAC:** CASL
 - **UI:** Tailwind CSS + shadcn/ui (tema neutro + acento teal, claro/oscuro)
 - **Tablas/estado:** TanStack Table + TanStack Query · **Formularios:** React Hook Form + Zod
 - **PDF:** Puppeteer · **Colas/integración ERP:** BullMQ + Redis · **Calendario:** FullCalendar · **BI:** Metabase embebido
 
 ## 🚦 Estado
 
-✅ **Sprint 0 (fundaciones) completo:** Next.js 15 + Tailwind + shadcn/ui con tema teal (claro/oscuro + toggle de densidad), AppShell (sidebar + topbar + ⌘K), Prisma + Postgres/Redis vía Docker, y login/dashboard base. Próximo: Sprint 1 (Tenant + Auth + RBAC).
+✅ **Sprint 0** (fundaciones) y **Sprint 1** (multi-tenant + auth + RBAC) completos: login real con sesión JWT, guard por permisos (CASL), menú filtrado por rol, y pantallas de Usuarios/Roles. Próximo: **Sprint 2** (Configuración: Parámetros, Categorías, Tags).
+
+> **Usuarios demo** (seed) · contraseña `jep12345`: `sistemas@jepmobiliari.com` (Administrador), `asesor.demo@jepmobiliari.com` (Asesor), `disenador.demo@jepmobiliari.com` (Diseñador).
 
 ## 🛠️ Desarrollo local
 

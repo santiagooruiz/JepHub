@@ -1,6 +1,10 @@
 import { PrismaClient } from "@prisma/client";
+import bcrypt from "bcryptjs";
 
 const db = new PrismaClient();
+
+// Contraseña de desarrollo para los usuarios de ejemplo.
+const DEV_PASSWORD = "jep12345";
 
 // ─── Roles (con cupo/licenciamiento, según la spec) ───
 const ROLES: { name: string; seatLimit: number }[] = [
@@ -185,11 +189,13 @@ async function main() {
     { name: "Consultor Demo", email: "consultor.demo@jepmobiliari.com", role: "Consultor", cargo: "Consultor", status: "INACTIVE" },
   ];
 
+  const passwordHash = await bcrypt.hash(DEV_PASSWORD, 10);
+
   for (const u of users) {
     const role = roleByName.get(u.role);
     await db.user.upsert({
       where: { email: u.email },
-      update: { name: u.name, roleId: role?.id, cargoActual: u.cargo },
+      update: { name: u.name, roleId: role?.id, cargoActual: u.cargo, passwordHash },
       create: {
         companyId: company.id,
         name: u.name,
@@ -197,6 +203,7 @@ async function main() {
         roleId: role?.id,
         cargoActual: u.cargo,
         status: u.status ?? "ACTIVE",
+        passwordHash,
       },
     });
   }

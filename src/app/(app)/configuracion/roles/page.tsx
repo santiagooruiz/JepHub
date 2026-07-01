@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 
 import { db } from "@/lib/db";
-import { getCurrentCompanyId } from "@/lib/tenant";
+import { requirePermission } from "@/lib/guard";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 
@@ -36,7 +36,8 @@ const MODULE_LABELS: Record<string, string> = {
 };
 
 export default async function RolesPage() {
-  const companyId = await getCurrentCompanyId();
+  const user = await requirePermission("view", "roles");
+  const companyId = user.companyId;
 
   const [roles, permissions, activeRps] = await Promise.all([
     db.role.findMany({ where: { companyId } }),

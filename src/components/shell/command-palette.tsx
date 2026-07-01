@@ -12,9 +12,10 @@ export function openCommandPalette() {
   window.dispatchEvent(new CustomEvent("open-command-palette"));
 }
 
-export function CommandPalette() {
+export function CommandPalette({ allowed }: { allowed: string[] }) {
   const [open, setOpen] = React.useState(false);
   const router = useRouter();
+  const items = NAV.filter((i) => allowed.includes(i.href));
 
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -56,7 +57,7 @@ export function CommandPalette() {
                 heading="Navegación"
                 className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:text-muted-foreground"
               >
-                {NAV.map((item) => {
+                {items.map((item) => {
                   const Icon = item.icon;
                   return (
                     <Command.Item

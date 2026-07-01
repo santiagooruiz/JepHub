@@ -1,7 +1,9 @@
 # Plan de Implementación — JEP-Hub
 
 > Traduce la [ESPEC-FUNCIONAL](ESPEC-FUNCIONAL.md) y el [SISTEMA-DISENO](SISTEMA-DISENO.md) en algo construible: **esquema Prisma**, **estructura de carpetas** y **sprints del MVP**.
-> Principio: paridad funcional + mejoras + salto visual. Stack: Next.js 15 (App Router) · PostgreSQL + Prisma · better-auth · CASL · Tailwind + shadcn/ui · TanStack · BullMQ/Redis · Puppeteer.
+> Principio: paridad funcional + mejoras + salto visual. Stack: Next.js 15 (App Router) · PostgreSQL + Prisma · **auth de sesión propia** (bcrypt + JWT httpOnly con `jose`) · CASL · Tailwind + shadcn/ui · TanStack · BullMQ/Redis · Puppeteer.
+>
+> **Nota (Sprint 1B):** se optó por autenticación propia en vez de better-auth — los usuarios son provisionados por el admin en un modelo multi-tenant/RBAC, y una sesión propia (password en `User.passwordHash`, cookie JWT, middleware) integra más limpio. Migrable a better-auth si se requiere OAuth/2FA.
 
 ---
 

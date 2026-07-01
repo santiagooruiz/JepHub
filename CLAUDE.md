@@ -23,7 +23,7 @@ JEP-Hub is an own CRM for **JEP Mobiliari** (furniture sector), a from-scratch r
 
 - **Next.js 15 (App Router) + React 19 + TypeScript** — Server Components for reads, Server Actions for mutations, Route Handlers for the ERP webhook.
 - **PostgreSQL + Prisma** (the Parámetros module needs `jsonb`).
-- **better-auth** (auth + multi-tenant/organizations = `company_id`) · **CASL** for RBAC.
+- **Auth: custom session** (bcrypt password hash + JWT in an httpOnly cookie via `jose`, verified in `middleware.ts`) — NOT better-auth (users are admin-provisioned in a multi-tenant/RBAC model, so a lean custom auth fit better). Multi-tenant via `companyId`. **CASL** for RBAC; `lib/auth.ts` (`getCurrentUser` → grants + ability), `lib/guard.ts` (`requireUser`/`requirePermission`), permission-filtered nav in `components/shell/nav.ts`.
 - **Tailwind CSS + shadcn/ui** (theme = neutral grafito + teal `#12A2BC` accent, dark sidebar in both modes) · **Lucide** icons.
 - **TanStack Table + TanStack Query** · **React Hook Form + Zod**.
 - **Puppeteer** for PDF (quote/order documents are HTML+images) · **BullMQ + Redis** worker for the "ofimática" ERP sync jobs · **FullCalendar** · **Metabase** embedded for the heavy BI dashboards.

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 
 import { db } from "@/lib/db";
-import { getCurrentCompanyId } from "@/lib/tenant";
+import { requirePermission } from "@/lib/guard";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 
@@ -27,7 +27,8 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export default async function UsuariosPage() {
-  const companyId = await getCurrentCompanyId();
+  const user = await requirePermission("view", "users");
+  const companyId = user.companyId;
 
   const [roles, users] = await Promise.all([
     db.role.findMany({

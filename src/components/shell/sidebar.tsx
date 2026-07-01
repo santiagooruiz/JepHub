@@ -6,8 +6,9 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { NAV } from "./nav";
 
-export function Sidebar() {
+export function Sidebar({ allowed }: { allowed: string[] }) {
   const pathname = usePathname();
+  const items = NAV.filter((i) => allowed.includes(i.href));
 
   return (
     <aside className="hidden w-60 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground md:flex">
@@ -21,7 +22,7 @@ export function Sidebar() {
 
       {/* Nav */}
       <nav className="flex-1 space-y-0.5 overflow-y-auto p-2">
-        {NAV.map((item) => {
+        {items.map((item) => {
           const active =
             pathname === item.href || pathname.startsWith(item.href + "/");
           const Icon = item.icon;
