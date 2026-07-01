@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { Plus, Table as TableIcon, LayoutGrid } from "lucide-react";
 
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/guard";
@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { OpportunitiesTable } from "@/features/opportunities/opportunities-table";
+import { KanbanBoard, type KanbanCard } from "@/features/opportunities/kanban-board";
 import { clientDisplayName } from "@/features/clients/queries";
 import { OPP_ESTADOS, probLabel, type OppRow } from "@/features/opportunities/types";
 
@@ -38,16 +39,38 @@ function FilterCard({
   );
 }
 
+function ViewToggle({ vista }: { vista: "tabla" | "kanban" }) {
+  const base =
+    "inline-flex h-9 items-center gap-1.5 px-3 text-sm font-medium transition-colors";
+  return (
+    <div className="inline-flex overflow-hidden rounded-md border">
+      <Link
+        href="/oportunidades"
+        className={cn(base, vista === "tabla" ? "bg-primary text-primary-foreground" : "hover:bg-accent")}
+      >
+        <TableIcon className="size-4" /> Tabla
+      </Link>
+      <Link
+        href="/oportunidades?vista=kanban"
+        className={cn(base, "border-l", vista === "kanban" ? "bg-primary text-primary-foreground" : "hover:bg-accent")}
+      >
+        <LayoutGrid className="size-4" /> Kanban
+      </Link>
+    </div>
+  );
+}
+
 export default async function OportunidadesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ estado?: string }>;
+  searchParams: Promise<{ estado?: string; vista?: string }>;
 }) {
   const user = await requirePermission("view", "opportunities");
   const canCreate = user.ability.can("create", "opportunities");
   const canEdit = user.ability.can("edit", "opportunities");
   const canDelete = user.ability.can("delete", "opportunities");
   const sp = await searchParams;
+  const vista = sp.vista === "kanban" ? "kanban" : "tabla";
   const estadoFilter =
     sp.estado && OPP_ESTADOS.includes(sp.estado) ? sp.estado : null;
 
@@ -72,6 +95,7 @@ export default async function OportunidadesPage({
     estado: e,
     n: all.filter((o) => o.estado === e).length,
   }));
+
   const filtered = estadoFilter
     ? all.filter((o) => o.estado === estadoFilter)
     : all;
@@ -92,41 +116,62 @@ export default async function OportunidadesPage({
       : "",
   }));
 
+  const kanbanCards: KanbanCard[] = all.map((o) => ({
+    id: o.id,
+    numero: o.numero,
+    nombre: o.nombre,
+    cliente: clientDisplayName(o.client),
+    asesor: o.advisor?.name ?? "",
+    estado: o.estado,
+  }));
+
   return (
     <div>
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold tracking-tight">Oportunidades</h1>
-        {canCreate && (
-          <Button asChild>
-            <Link href="/oportunidades/nuevo">
-              <Plus className="size-4" /> Nueva oportunidad
-            </Link>
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          <ViewToggle vista={vista} />
+          {canCreate && (
+            <Button asChild>
+              <Link href="/oportunidades/nuevo">
+                <Plus className="size-4" /> Nueva
+              </Link>
+            </Button>
+          )}
+        </div>
       </div>
 
-      <div
-        className="mb-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5"
-        style={{ gap: "var(--card-gap)" }}
-      >
-        <FilterCard
-          href="/oportunidades"
-          label="Todas"
-          n={all.length}
-          active={!estadoFilter}
-        />
-        {counts.map((c) => (
-          <FilterCard
-            key={c.estado}
-            href={`/oportunidades?estado=${encodeURIComponent(c.estado)}`}
-            label={c.estado}
-            n={c.n}
-            active={estadoFilter === c.estado}
+      {vista === "kanban" ? (
+        <KanbanBoard cards={kanbanCards} canEdit={canEdit} />
+      ) : (
+        <>
+          <div
+            className="mb-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5"
+            style={{ gap: "var(--card-gap)" }}
+          >
+            <FilterCard
+              href="/oportunidades"
+              label="Todas"
+              n={all.length}
+              active={!estadoFilter}
+            />
+            {counts.map((c) => (
+              <FilterCard
+                key={c.estado}
+                href={`/oportunidades?estado=${encodeURIComponent(c.estado)}`}
+                label={c.estado}
+                n={c.n}
+                active={estadoFilter === c.estado}
+              />
+            ))}
+          </div>
+          <OpportunitiesTable
+            data={rows}
+            canEdit={canEdit}
+            canDelete={canDelete}
           />
-        ))}
-      </div>
-
-      <OpportunitiesTable data={rows} canEdit={canEdit} canDelete={canDelete} />
+        </>
+      )}
     </div>
   );
 }

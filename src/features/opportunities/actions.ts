@@ -6,6 +6,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/guard";
 import type { ActionResult } from "@/features/config/actions";
+import { OPP_ESTADOS } from "./types";
 
 const nullableStr = z
   .string()
@@ -76,6 +77,23 @@ export async function deleteOpportunity(id: string): Promise<ActionResult> {
   await db.opportunity.updateMany({
     where: { id, companyId: user.companyId },
     data: { deletedAt: new Date() },
+  });
+  revalidatePath("/oportunidades");
+  return { ok: true };
+}
+
+/** Mueve una oportunidad de estado (usado por el Kanban). */
+export async function updateOpportunityStage(
+  id: string,
+  estado: string
+): Promise<ActionResult> {
+  const user = await requirePermission("edit", "opportunities");
+  if (!OPP_ESTADOS.includes(estado)) {
+    return { ok: false, error: "Estado inválido." };
+  }
+  await db.opportunity.updateMany({
+    where: { id, companyId: user.companyId },
+    data: { estado },
   });
   revalidatePath("/oportunidades");
   return { ok: true };
