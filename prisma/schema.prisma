@@ -1,0 +1,44 @@
+// Esquema Prisma — Sprint 0 (mínimo, fundacional).
+// El esquema v1 completo (todas las entidades) está en docs/PLAN-IMPLEMENTACION.md
+// y se irá materializando en los Sprints 1–3.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  PASSWORD_CHANGE
+}
+
+model Company {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  users     User[]
+}
+
+model Role {
+  id    String @id @default(cuid())
+  name  String @unique
+  users User[]
+}
+
+model User {
+  id           String     @id @default(cuid())
+  companyId    String
+  company      Company    @relation(fields: [companyId], references: [id])
+  name         String
+  email        String     @unique
+  passwordHash String
+  roleId       String?
+  role         Role?      @relation(fields: [roleId], references: [id])
+  status       UserStatus @default(ACTIVE)
+  createdAt    DateTime   @default(now())
+}

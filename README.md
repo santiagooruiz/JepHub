@@ -24,7 +24,21 @@ CRM propio para **JEP Mobiliari** (sector mobiliario): gestión de clientes/pros
 
 ## 🚦 Estado
 
-📄 Documentación y decisiones de arquitectura completas. Próximo hito: plan de implementación + scaffolding del MVP.
+✅ **Sprint 0 (fundaciones) completo:** Next.js 15 + Tailwind + shadcn/ui con tema teal (claro/oscuro + toggle de densidad), AppShell (sidebar + topbar + ⌘K), Prisma + Postgres/Redis vía Docker, y login/dashboard base. Próximo: Sprint 1 (Tenant + Auth + RBAC).
+
+## 🛠️ Desarrollo local
+
+Requisitos: Node 20+, pnpm (vía `corepack enable`), Docker.
+
+```bash
+pnpm install
+docker compose up -d          # postgres + redis
+cp .env.example .env          # ajustar si hace falta
+pnpm db:migrate               # crea el esquema
+pnpm dev                      # http://localhost:3000
+```
+
+Scripts: `pnpm dev` · `pnpm build` · `pnpm lint` · `pnpm typecheck` · `pnpm db:migrate` · `pnpm db:studio`
 
 ## Ciclo de negocio
 

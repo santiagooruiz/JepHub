@@ -1,0 +1,97 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 210 40% 98%;
+    --foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+    --primary: 189 82% 40%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+    --accent: 210 40% 96%;
+    --accent-foreground: 222 47% 11%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 160 84% 39%;
+    --warning: 32 95% 44%;
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 189 82% 40%;
+    --radius: 0.5rem;
+
+    /* Sidebar: grafito en ambos modos */
+    --sidebar: 222 47% 11%;
+    --sidebar-foreground: 213 27% 84%;
+    --sidebar-muted: 215 20% 55%;
+    --sidebar-accent: 189 82% 40%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 217 33% 20%;
+  }
+
+  .dark {
+    --background: 222 47% 6%;
+    --foreground: 214 32% 91%;
+    --card: 221 39% 11%;
+    --card-foreground: 214 32% 91%;
+    --popover: 221 39% 11%;
+    --popover-foreground: 214 32% 91%;
+    --primary: 189 80% 45%;
+    --primary-foreground: 190 80% 8%;
+    --secondary: 217 33% 17%;
+    --secondary-foreground: 214 32% 91%;
+    --muted: 217 33% 17%;
+    --muted-foreground: 215 20% 65%;
+    --accent: 217 33% 17%;
+    --accent-foreground: 214 32% 91%;
+    --destructive: 0 63% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 160 70% 45%;
+    --warning: 38 92% 55%;
+    --border: 215 28% 17%;
+    --input: 215 28% 17%;
+    --ring: 189 80% 45%;
+
+    --sidebar: 222 47% 5%;
+    --sidebar-foreground: 215 20% 70%;
+    --sidebar-muted: 215 16% 50%;
+    --sidebar-accent: 189 80% 45%;
+    --sidebar-accent-foreground: 190 80% 8%;
+    --sidebar-border: 215 28% 14%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+  /* Cifras tabulares para montos */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* ── Densidad (compacta por defecto, cómoda opcional) ── */
+:root {
+  --row-h: 2.25rem;
+  --cell-py: 0.375rem;
+  --control-h: 2.25rem;
+  --card-gap: 0.75rem;
+}
+[data-density="comfortable"] {
+  --row-h: 3rem;
+  --cell-py: 0.75rem;
+  --control-h: 2.5rem;
+  --card-gap: 1.25rem;
+}

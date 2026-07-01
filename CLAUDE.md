@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-This repo is in the **documentation / planning phase**. There is **no application code yet** — no `package.json`, no build/lint/test tooling. The tracked content is the specification and architecture that the app will be built from:
+**Sprint 0 (foundations) is done** — the Next.js app is scaffolded and builds. Ongoing work follows the sprint plan in `docs/PLAN-IMPLEMENTACION.md`. The `docs/` files remain the source of truth for spec, design and data model:
 
 | File | What it holds |
 |------|---------------|
@@ -48,16 +48,15 @@ Facts that will bite you if unknown:
 - **Furniture domain:** quote/order line items carry `acabados` (Formica/Canto/Herraje) that can be "POR DEFINIR" until design completes; PDFs come in two flavors (normal and **con despiece** / BOM).
 - **Activity/timeline is transversal** to clients, oportunidades, cotizaciones and pedidos (a shared events/`activities` table drives the timelines, the calendar, and BI Seguimiento).
 
-## Once the app is scaffolded
+## Commands
 
-No commands exist yet. When scaffolding, this stack implies (adjust to the chosen package manager, pnpm recommended):
+Package manager is **pnpm** (activate with `corepack enable`). Postgres/Redis run via `docker compose up -d`.
 
-- Dev server: `pnpm dev` · Build: `pnpm build` · Start: `pnpm start`
-- Lint/format: `pnpm lint` · Types: `pnpm typecheck`
-- DB (Prisma): `pnpm prisma migrate dev`, `pnpm prisma generate`, `pnpm prisma studio`
-- Worker (BullMQ) runs as a separate process; Redis + Postgres via `docker compose` (see `docs/ARQUITECTURA-DESPLIEGUE.md`).
+- Dev: `pnpm dev` · Build: `pnpm build` · Start: `pnpm start`
+- Lint: `pnpm lint` · Types: `pnpm typecheck` (also run inside `pnpm build`)
+- DB: `pnpm db:migrate` · `pnpm db:generate` · `pnpm db:studio` · `pnpm db:push`
 
-Update this section with the real scripts from `package.json` (including how to run a single test) as soon as tooling lands.
+Notes: `output: "standalone"` is gated behind `BUILD_STANDALONE=1` (Windows can't create the symlinks it needs; enable it only in the Docker build). No test runner is wired yet — add Vitest/Playwright and document the single-test command when it lands.
 
 ## Conventions
 

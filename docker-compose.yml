@@ -1,0 +1,26 @@
+# Dev: base de datos + redis locales.
+# (El despliegue de producción está en docs/ARQUITECTURA-DESPLIEGUE.md)
+services:
+  postgres:
+    image: postgres:16
+    container_name: jephub-postgres
+    environment:
+      POSTGRES_USER: jep
+      POSTGRES_PASSWORD: jep
+      POSTGRES_DB: jephub
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7
+    container_name: jephub-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+
+volumes:
+  pgdata:
+  redisdata:
