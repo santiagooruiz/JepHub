@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { db } from "@/lib/db";
-import { requirePermission } from "@/lib/guard";
+import { requirePermission, requireUser } from "@/lib/guard";
 import type { ActionResult } from "@/features/config/actions";
 
 const nullableStr = z
@@ -87,5 +87,105 @@ export async function deleteClient(id: string): Promise<ActionResult> {
     data: { deletedAt: new Date() },
   });
   revalidatePath("/clientes");
+  return { ok: true };
+}
+
+// ─────────────────────────── Contactos internos ───────────────────────────
+const contactSchema = z.object({
+  id: z.string().optional(),
+  clientId: z.string().min(1),
+  nombre: z.string().min(1, "Nombre requerido"),
+  email: nullableStr,
+  telefono: nullableStr,
+  cargo: nullableStr,
+  observacion: nullableStr,
+});
+
+export async function saveContact(input: unknown): Promise<ActionResult> {
+  const raw = input as { id?: string };
+  const user = await requirePermission(
+    raw?.id ? "editcontact" : "createcontact",
+    "clients"
+  );
+  const parsed = contactSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Datos inválidos" };
+  }
+  const { id, clientId, ...data } = parsed.data;
+
+  const client = await db.client.findFirst({
+    where: { id: clientId, companyId: user.companyId },
+    select: { id: true },
+  });
+  if (!client) return { ok: false, error: "Cliente no encontrado." };
+
+  if (id) {
+    await db.contact.updateMany({
+      where: { id, client: { companyId: user.companyId } },
+      data,
+    });
+  } else {
+    await db.contact.create({ data: { clientId, ...data } });
+  }
+  revalidatePath(`/clientes/${clientId}`);
+  return { ok: true };
+}
+
+export async function deleteContact(id: string): Promise<ActionResult> {
+  const user = await requirePermission("deletecontact", "clients");
+  const contact = await db.contact.findFirst({
+    where: { id, client: { companyId: user.companyId } },
+    select: { clientId: true },
+  });
+  if (!contact) return { ok: false, error: "Contacto no encontrado." };
+  await db.contact.delete({ where: { id } });
+  revalidatePath(`/clientes/${contact.clientId}`);
+  return { ok: true };
+}
+
+// ─────────────────────────── Adjuntos ───────────────────────────
+const attachmentSchema = z.object({
+  clientId: z.string().min(1),
+  tipoArchivo: nullableStr,
+  observaciones: nullableStr,
+  url: z.string().min(1, "URL o nombre requerido"),
+});
+
+export async function saveAttachment(input: unknown): Promise<ActionResult> {
+  const user = await requireUser();
+  const parsed = attachmentSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Datos inválidos" };
+  }
+  const { clientId, tipoArchivo, observaciones, url } = parsed.data;
+  const client = await db.client.findFirst({
+    where: { id: clientId, companyId: user.companyId },
+    select: { id: true },
+  });
+  if (!client) return { ok: false, error: "Cliente no encontrado." };
+
+  await db.attachment.create({
+    data: {
+      companyId: user.companyId,
+      entityType: "CLIENT",
+      clientId,
+      tipoArchivo,
+      observaciones,
+      url,
+    },
+  });
+  revalidatePath(`/clientes/${clientId}`);
+  return { ok: true };
+}
+
+export async function deleteAttachment(id: string): Promise<ActionResult> {
+  const user = await requireUser();
+  const att = await db.attachment.findFirst({
+    where: { id, client: { companyId: user.companyId } },
+    select: { clientId: true },
+  });
+  if (!att) return { ok: false, error: "Adjunto no encontrado." };
+  await db.attachment.delete({ where: { id } });
+  revalidatePath(`/clientes/${att.clientId}`);
   return { ok: true };
 }

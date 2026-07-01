@@ -339,6 +339,50 @@ async function main() {
     });
   }
 
+  // ── Contacto y actividades de ejemplo (cliente #1) ──
+  const client1 = await db.client.findUnique({
+    where: { companyId_numero: { companyId: company.id, numero: 1 } },
+  });
+  if (client1) {
+    const hasContact = await db.contact.findFirst({ where: { clientId: client1.id } });
+    if (!hasContact) {
+      await db.contact.create({
+        data: {
+          clientId: client1.id,
+          nombre: "Contacto Demo",
+          email: "contacto.demo@ejemplo-andina.co",
+          telefono: "+57 300 0000010",
+          cargo: "Compras",
+        },
+      });
+    }
+    const hasActivity = await db.activity.findFirst({ where: { clientId: client1.id } });
+    if (!hasActivity) {
+      await db.activity.createMany({
+        data: [
+          {
+            companyId: company.id,
+            entityType: "CLIENT",
+            clientId: client1.id,
+            accion: "Llamada",
+            fechaHora: new Date(Date.now() - 2 * 86400000),
+            observaciones: "Primer contacto telefónico.",
+            userId: asesorUser?.id,
+          },
+          {
+            companyId: company.id,
+            entityType: "CLIENT",
+            clientId: client1.id,
+            accion: "Visita",
+            fechaHora: new Date(Date.now() - 1 * 86400000),
+            observaciones: "Visita comercial en sitio.",
+            userId: asesorUser?.id,
+          },
+        ],
+      });
+    }
+  }
+
   const counts = {
     roles: await db.role.count(),
     permissions: await db.permission.count(),
@@ -350,6 +394,8 @@ async function main() {
     priceLists: await db.priceList.count(),
     sectors: await db.sector.count(),
     clients: await db.client.count(),
+    contacts: await db.contact.count(),
+    activities: await db.activity.count(),
   };
   console.log("Seed completado:", counts);
 }

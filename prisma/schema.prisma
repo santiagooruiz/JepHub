@@ -22,6 +22,13 @@ enum PersonType {
   JURIDICA
 }
 
+enum EntityType {
+  CLIENT
+  OPPORTUNITY
+  QUOTE
+  ORDER
+}
+
 // ─────────────────────────── Tenancy ───────────────────────────
 model Company {
   id         String      @id @default(cuid())
@@ -124,6 +131,7 @@ model User {
   createdAt        DateTime   @default(now())
   updatedAt        DateTime   @updatedAt
   clientsAdvised   Client[]   @relation("ClientAdvisor")
+  activities       Activity[]
 }
 
 // ─────────────────────────── Clientes ───────────────────────────
@@ -165,6 +173,8 @@ model Client {
   updatedAt            DateTime   @updatedAt
   deletedAt            DateTime?
   contacts             Contact[]
+  activities           Activity[]
+  attachments          Attachment[]
 
   @@unique([companyId, numero])
   @@index([companyId, estado])
@@ -202,4 +212,44 @@ model PriceList {
   id      String   @id @default(cuid())
   name    String   @unique
   clients Client[]
+}
+
+// ─────────────── Transversales: Actividad & Adjuntos ───────────────
+// Se relacionan opcionalmente con cliente/oportunidad/cotización/pedido.
+model Activity {
+  id            String     @id @default(cuid())
+  companyId     String
+  entityType    EntityType
+  clientId      String?
+  client        Client?    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  opportunityId String?
+  quoteId       String?
+  orderId       String?
+  accion        String
+  fechaHora     DateTime
+  observaciones String?
+  userId        String?
+  user          User?      @relation(fields: [userId], references: [id])
+  auto          Boolean    @default(false)
+  createdAt     DateTime   @default(now())
+
+  @@index([entityType, clientId])
+}
+
+model Attachment {
+  id            String     @id @default(cuid())
+  companyId     String
+  entityType    EntityType
+  clientId      String?
+  client        Client?    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  opportunityId String?
+  quoteId       String?
+  orderId       String?
+  tipoArchivo   String?
+  bucket        String     @default("archivos")
+  observaciones String?
+  url           String
+  createdAt     DateTime   @default(now())
+
+  @@index([entityType, clientId])
 }
