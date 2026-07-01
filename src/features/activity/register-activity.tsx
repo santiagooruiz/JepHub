@@ -10,10 +10,12 @@ const selectCls =
   "h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 export function RegisterActivity({
-  clientId,
+  entityType,
+  entityId,
   acciones,
 }: {
-  clientId: string;
+  entityType: "CLIENT" | "OPPORTUNITY" | "QUOTE" | "ORDER";
+  entityId: string;
   acciones: string[];
 }) {
   const router = useRouter();
@@ -28,7 +30,8 @@ export function RegisterActivity({
     setError(null);
     start(async () => {
       const res = await registerActivity({
-        clientId,
+        entityType,
+        entityId,
         accion,
         fechaHora,
         observaciones: obs,

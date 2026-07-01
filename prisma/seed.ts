@@ -339,6 +339,37 @@ async function main() {
     });
   }
 
+  // ── Oportunidades de ejemplo ──
+  const clientsAll = await db.client.findMany({
+    where: { companyId: company.id },
+    orderBy: { numero: "asc" },
+  });
+  const OPPS = [
+    { nombre: "SILLAS INTERLOCUTORAS OFICINAS NUEVAS", estado: "Pendiente Aprobación", prob: "UNDEFINED" as const },
+    { nombre: "MESAS TIPO AUDITORIO", estado: "Cotizada", prob: "HIGH" as const },
+    { nombre: "PUESTOS DE TRABAJO EDIFICIO", estado: "No Cotizada", prob: "UNDEFINED" as const },
+    { nombre: "MESÓN EN CORIAN PARA LAVAMANOS", estado: "Perdida", prob: "UNDEFINED" as const },
+    { nombre: "ARCHIVO RODANTE METÁLICO", estado: "Cotizada", prob: "FIXED" as const },
+  ];
+  for (let i = 0; i < OPPS.length && clientsAll.length; i++) {
+    const cl = clientsAll[i % clientsAll.length];
+    await db.opportunity.upsert({
+      where: { companyId_numero: { companyId: company.id, numero: i + 1 } },
+      update: {},
+      create: {
+        companyId: company.id,
+        numero: i + 1,
+        clientId: cl.id,
+        nombre: OPPS[i].nombre,
+        estado: OPPS[i].estado,
+        probabilidad: OPPS[i].prob,
+        advisorId: asesorUser?.id,
+        contacto: "Contacto",
+        fechaCierreProyectada: new Date(Date.now() + 30 * 86400000),
+      },
+    });
+  }
+
   // ── Contacto y actividades de ejemplo (cliente #1) ──
   const client1 = await db.client.findUnique({
     where: { companyId_numero: { companyId: company.id, numero: 1 } },
@@ -394,6 +425,7 @@ async function main() {
     priceLists: await db.priceList.count(),
     sectors: await db.sector.count(),
     clients: await db.client.count(),
+    opportunities: await db.opportunity.count(),
     contacts: await db.contact.count(),
     activities: await db.activity.count(),
   };

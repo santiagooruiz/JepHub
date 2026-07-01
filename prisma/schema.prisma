@@ -29,6 +29,12 @@ enum EntityType {
   ORDER
 }
 
+enum CloseProb {
+  UNDEFINED
+  HIGH
+  FIXED
+}
+
 // ─────────────────────────── Tenancy ───────────────────────────
 model Company {
   id         String      @id @default(cuid())
@@ -36,10 +42,11 @@ model Company {
   createdAt  DateTime    @default(now())
   users      User[]
   roles      Role[]
-  parameters Parameter[]
-  categories Category[]
-  tags       Tag[]
-  clients    Client[]
+  parameters    Parameter[]
+  categories    Category[]
+  tags          Tag[]
+  clients       Client[]
+  opportunities Opportunity[]
 }
 
 // ─────────────────────────── Config & Catálogos ───────────────────────────
@@ -130,8 +137,9 @@ model User {
   lastLoginAt      DateTime?
   createdAt        DateTime   @default(now())
   updatedAt        DateTime   @updatedAt
-  clientsAdvised   Client[]   @relation("ClientAdvisor")
-  activities       Activity[]
+  clientsAdvised     Client[]      @relation("ClientAdvisor")
+  activities         Activity[]
+  opportunitiesAdvised Opportunity[] @relation("OppAdvisor")
 }
 
 // ─────────────────────────── Clientes ───────────────────────────
@@ -175,6 +183,7 @@ model Client {
   contacts             Contact[]
   activities           Activity[]
   attachments          Attachment[]
+  opportunities        Opportunity[]
 
   @@unique([companyId, numero])
   @@index([companyId, estado])
@@ -189,6 +198,30 @@ model Contact {
   telefono    String?
   cargo       String?
   observacion String?
+}
+
+// ─────────────────────────── Oportunidades ───────────────────────────
+// (interna: "proyecto" en el CRM original)
+model Opportunity {
+  id                    String     @id @default(cuid())
+  companyId             String
+  company               Company    @relation(fields: [companyId], references: [id])
+  numero                Int
+  clientId              String
+  client                Client     @relation(fields: [clientId], references: [id])
+  nombre                String
+  contacto              String?
+  advisorId             String?
+  advisor               User?      @relation("OppAdvisor", fields: [advisorId], references: [id])
+  fechaCierreProyectada DateTime?
+  estado                String     @default("No Cotizada")
+  probabilidad          CloseProb  @default(UNDEFINED)
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
+  deletedAt             DateTime?
+
+  @@unique([companyId, numero])
+  @@index([companyId, estado])
 }
 
 model Sector {

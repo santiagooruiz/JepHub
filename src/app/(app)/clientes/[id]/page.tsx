@@ -170,7 +170,7 @@ export default async function ClienteFichaPage({
               <CardTitle className="text-base">Registro de actividad</CardTitle>
             </CardHeader>
             <div className="px-4 pb-4">
-              <RegisterActivity clientId={c.id} acciones={acciones} />
+              <RegisterActivity entityType="CLIENT" entityId={c.id} acciones={acciones} />
             </div>
           </Card>
 
