@@ -1,9 +1,11 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Search, Bell, LogOut } from "lucide-react";
+import { Search, LogOut } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { NotificationBell } from "@/features/notifications/bell";
+import type { NotificationItem } from "@/features/notifications/queries";
 import { ThemeToggle } from "./theme-toggle";
 import { DensityToggle } from "./density-toggle";
 import { openCommandPalette } from "./command-palette";
@@ -20,9 +22,13 @@ function initials(name: string) {
 export function Topbar({
   userName,
   roleName,
+  notifications,
+  unread,
 }: {
   userName: string;
   roleName: string;
+  notifications: NotificationItem[];
+  unread: number;
 }) {
   const router = useRouter();
 
@@ -47,9 +53,7 @@ export function Topbar({
       </button>
 
       <div className="ml-auto flex items-center gap-1">
-        <Button variant="ghost" size="icon" aria-label="Notificaciones">
-          <Bell className="size-4" />
-        </Button>
+        <NotificationBell items={notifications} unread={unread} />
         <DensityToggle />
         <ThemeToggle />
 

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/guard";
+import { enqueueSend } from "@/server/queue/ofimatica";
 import type { ActionResult } from "@/features/config/actions";
 import {
   ORDER_ESTADOS,
@@ -103,31 +104,37 @@ export async function approveOrderStep(
   return { ok: true };
 }
 
-/** STUB de integración con "ofimática": simula el envío y fechas de producción. */
+/**
+ * Encola el envío del pedido al ERP "ofimática". El worker BullMQ hace el envío
+ * real (mock) y programa los hitos (tapicería/listo/despacho), que llegan por el
+ * webhook. La integración es asíncrona: aquí solo se valida y encola.
+ */
 export async function sendToOfimatica(orderId: string): Promise<ActionResult> {
   const user = await requirePermission("send_ofimatica", "orders");
   const order = await db.order.findFirst({
     where: { id: orderId, companyId: user.companyId },
-    select: { id: true, numero: true },
+    select: { id: true, erpSync: { select: { estadoEnvio: true } } },
   });
   if (!order) return { ok: false, error: "Pedido no encontrado." };
+  if (order.erpSync?.estadoEnvio === "ENVIADO") {
+    return { ok: false, error: "El pedido ya fue enviado a ofimática." };
+  }
 
-  const now = new Date();
-  await db.erpSync.update({
-    where: { orderId },
-    data: {
-      estadoEnvio: "ENVIADO",
-      fechaEnvio: now,
-      nPedidoOfimatica: `OF-${order.numero}${String(now.getFullYear()).slice(2)}`,
-      fechaTapiceria: new Date(now.getTime() + 3 * 86400000),
-      fechaListo: new Date(now.getTime() + 7 * 86400000),
-      fechaDespacho: new Date(now.getTime() + 10 * 86400000),
-    },
-  });
-  await db.order.update({
-    where: { id: orderId },
-    data: { estado: "En Producción" },
-  });
+  try {
+    await db.erpSync.upsert({
+      where: { orderId },
+      create: { orderId, estadoEnvio: "ENCOLADO" },
+      update: { estadoEnvio: "ENCOLADO", ultimoError: null },
+    });
+    await enqueueSend(orderId);
+  } catch {
+    await db.erpSync.updateMany({
+      where: { orderId },
+      data: { estadoEnvio: "ERROR", ultimoError: "No se pudo encolar el envío." },
+    });
+    return { ok: false, error: "No se pudo encolar el envío. ¿Está Redis activo?" };
+  }
+
   revalidatePath(`/pedidos/${orderId}`);
   revalidatePath("/pedidos");
   return { ok: true };

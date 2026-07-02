@@ -188,6 +188,7 @@ export default async function PedidoDetallePage({
                 erp={{
                   estadoEnvio: o.erpSync?.estadoEnvio ?? null,
                   nPedidoOfimatica: o.erpSync?.nPedidoOfimatica ?? null,
+                  ultimoError: o.erpSync?.ultimoError ?? null,
                   fechaEnvio: fmtDate(o.erpSync?.fechaEnvio ?? null),
                   fechaTapiceria: fmtDate(o.erpSync?.fechaTapiceria ?? null),
                   fechaListo: fmtDate(o.erpSync?.fechaListo ?? null),

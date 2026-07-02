@@ -160,6 +160,7 @@ model User {
   designsAssigned      DesignRequest[]        @relation("DesignAssignee")
   specialDesignsCreated SpecialDesign[]       @relation("SpecialCreator")
   specialMessages      SpecialDesignMessage[]
+  notifications        Notification[]
 }
 
 // ─────────────────────────── Clientes ───────────────────────────
@@ -420,18 +421,39 @@ model OrderApproval {
   @@unique([orderId, kind])
 }
 
-// Stub de integración con el ERP "ofimática".
+// Integración con el ERP "ofimática" (sincronización asíncrona vía worker BullMQ).
 model ErpSync {
-  id               String    @id @default(cuid())
-  orderId          String    @unique
-  order            Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  nPedidoOfimatica String?
-  estadoEnvio      String?
-  fechaEnvio       DateTime?
-  fechaTapiceria   DateTime?
-  fechaListo       DateTime?
-  fechaDespacho    DateTime?
-  notasGenerales   String?
+  id                     String    @id @default(cuid())
+  orderId                String    @unique
+  order                  Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  nPedidoOfimatica       String?
+  identificadorCotizacion String?
+  // PENDIENTE · ENCOLADO · ENVIADO · ERROR
+  estadoEnvio            String?
+  fechaEnvio             DateTime?
+  fechaCreacion          DateTime?
+  fechaTapiceria         DateTime?
+  fechaListo             DateTime?
+  fechaDespacho          DateTime?
+  notasGenerales         String?
+  ultimoError            String?
+  intentos               Int       @default(0)
+}
+
+// Notificación in-app (eventos del sistema: hitos ofimática, etc.).
+model Notification {
+  id        String   @id @default(cuid())
+  companyId String
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  tipo      String   // ofimatica · sistema · ...
+  titulo    String
+  cuerpo    String?
+  href      String?
+  leida     Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([companyId, userId, leida])
 }
 
 // Firma electrónica remota del cliente para aprobar una cotización.

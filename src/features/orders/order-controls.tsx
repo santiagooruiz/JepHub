@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Check, Send } from "lucide-react";
+import { Check, Send, RefreshCw } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -99,57 +99,87 @@ export function ApprovalsPanel({
 export type ErpState = {
   estadoEnvio: string | null;
   nPedidoOfimatica: string | null;
+  ultimoError: string | null;
   fechaEnvio: string | null;
   fechaTapiceria: string | null;
   fechaListo: string | null;
   fechaDespacho: string | null;
 };
 
-export function OfimaticaPanel({
-  orderId,
-  erp,
-}: {
-  orderId: string;
-  erp: ErpState;
-}) {
+function Hito({ label, fecha }: { label: string; fecha: string | null }) {
+  return (
+    <div className="flex items-center justify-between text-xs">
+      <span className="text-muted-foreground">{label}</span>
+      {fecha ? (
+        <span className="tabular">{fecha}</span>
+      ) : (
+        <span className="text-muted-foreground/60">pendiente</span>
+      )}
+    </div>
+  );
+}
+
+export function OfimaticaPanel({ orderId, erp }: { orderId: string; erp: ErpState }) {
   const router = useRouter();
   const [pending, start] = React.useTransition();
+  const [error, setError] = React.useState<string | null>(null);
+
+  const send = () =>
+    start(async () => {
+      setError(null);
+      const res = await sendToOfimatica(orderId);
+      if (!res.ok) setError(res.error);
+      router.refresh();
+    });
 
   if (erp.estadoEnvio === "ENVIADO") {
     return (
-      <div className="space-y-1 text-sm">
+      <div className="space-y-2 text-sm">
         <div className="flex items-center gap-2">
           <Badge variant="success">ENVIADO</Badge>
-          <span className="text-muted-foreground">
-            N° {erp.nPedidoOfimatica}
-          </span>
+          <span className="text-muted-foreground">N° {erp.nPedidoOfimatica}</span>
         </div>
-        <div className="text-xs text-muted-foreground">Fecha envío: {erp.fechaEnvio}</div>
-        <div className="text-xs text-muted-foreground">Tapicería: {erp.fechaTapiceria}</div>
-        <div className="text-xs text-muted-foreground">Listo: {erp.fechaListo}</div>
-        <div className="text-xs text-muted-foreground">Despacho: {erp.fechaDespacho}</div>
+        <Hito label="Fecha envío" fecha={erp.fechaEnvio} />
+        <div className="border-t pt-1">
+          <Hito label="Tapicería" fecha={erp.fechaTapiceria} />
+          <Hito label="Listo" fecha={erp.fechaListo} />
+          <Hito label="Despacho" fecha={erp.fechaDespacho} />
+        </div>
+        <Button variant="ghost" size="sm" className="w-full" disabled={pending} onClick={() => router.refresh()}>
+          <RefreshCw className="size-4" /> Actualizar hitos
+        </Button>
+      </div>
+    );
+  }
+
+  if (erp.estadoEnvio === "ENCOLADO") {
+    return (
+      <div className="space-y-2 text-sm">
+        <Badge variant="muted">EN COLA</Badge>
+        <p className="text-xs text-muted-foreground">
+          El worker está procesando el envío al ERP. Actualiza en unos segundos.
+        </p>
+        <Button variant="ghost" size="sm" className="w-full" disabled={pending} onClick={() => router.refresh()}>
+          <RefreshCw className="size-4" /> Actualizar
+        </Button>
       </div>
     );
   }
 
   return (
     <div className="space-y-2">
+      {erp.estadoEnvio === "ERROR" && (
+        <div className="rounded-md border border-[hsl(var(--destructive))]/40 bg-destructive/5 p-2 text-xs text-[hsl(var(--destructive))]">
+          Falló el envío: {erp.ultimoError ?? "error desconocido"}
+        </div>
+      )}
       <p className="text-sm text-muted-foreground">
-        Envía el pedido al ERP de producción (integración simulada).
+        Envía el pedido al ERP de producción (worker + integración simulada).
       </p>
-      <Button
-        variant="outline"
-        className="w-full"
-        disabled={pending}
-        onClick={() =>
-          start(async () => {
-            await sendToOfimatica(orderId);
-            router.refresh();
-          })
-        }
-      >
-        <Send className="size-4" /> Enviar a ofimática
+      <Button variant="outline" className="w-full" disabled={pending} onClick={send}>
+        <Send className="size-4" /> {erp.estadoEnvio === "ERROR" ? "Reintentar envío" : "Enviar a ofimática"}
       </Button>
+      {error && <p className="text-sm text-[hsl(var(--destructive))]">{error}</p>}
     </div>
   );
 }
