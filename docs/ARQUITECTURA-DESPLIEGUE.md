@@ -54,6 +54,13 @@
 > **PDF:** Puppeteer/Chromium puede ir dentro de `web` o como servicio `pdf` aparte. Recomendado empezar dentro de `worker` (los PDFs de cotización/pedido se generan como job → no bloquean la request).
 
 ## docker-compose (esqueleto indicativo)
+
+> **Nota (Sprint 10):** la versión real y ejecutable vive en la raíz del repo:
+> [`Dockerfile`](../Dockerfile) (targets `runner` y `worker`),
+> [`docker-compose.prod.yml`](../docker-compose.prod.yml),
+> [`Caddyfile`](../Caddyfile) y [`.env.production.example`](../.env.production.example).
+> El esqueleto de abajo es solo ilustrativo.
+
 ```yaml
 services:
   caddy:
@@ -97,6 +104,42 @@ crm.jepmobiliari.com {
     reverse_proxy web:3000
 }
 ```
+
+## Puesta en marcha (runbook)
+
+En la VM Ubuntu, con el repo clonado y Docker instalado:
+
+```bash
+# 1) Configurar secretos de producción
+cp .env.production.example .env.production
+#   editar valores; generar secretos con: openssl rand -base64 48
+
+# 2) Construir y levantar (caddy provisiona TLS solo)
+docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
+#   el servicio `migrate` aplica `prisma migrate deploy` antes de web/worker
+
+# 3) Sembrar datos base (SOLO la primera vez): roles, 54 permisos, empresa y
+#    usuario admin. Nota: el seed actual también inserta datos demo.
+docker compose --env-file .env.production -f docker-compose.prod.yml \
+  run --rm migrate pnpm prisma db seed
+
+# 4) Verificar salud y logs
+curl -fsS https://crm.jepmobiliari.com/api/health   # {"status":"ok","db":"up"}
+docker compose -f docker-compose.prod.yml logs -f web worker
+```
+
+Operación:
+- **Actualizar versión:** `git pull && docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build` (migrate corre solo).
+- **Backup manual:** `./scripts/backup.sh` (el servicio `backup` ya hace uno diario con rotación 7/4/6 en `./backups`; copiar offsite).
+- **Restaurar:** `gunzip -c backups/jephub-XXXX.sql.gz | docker compose -f docker-compose.prod.yml exec -T postgres psql -U jep -d jephub`.
+- **Salud:** `GET /api/health` (usado por el healthcheck del contenedor `web`).
+
+## Endurecimiento aplicado (Sprint 10)
+- Contenedores como **usuario no-root** (`node`); Postgres/Redis **sin puertos publicados**.
+- **Cabeceras de seguridad** en la app (`next.config.mjs`) + **HSTS** en Caddy; `x-powered-by` desactivado.
+- **Validación de entorno** al arranque (`src/instrumentation.ts` → `lib/env.ts`): en producción exige `AUTH_SECRET` fuerte y los secretos definidos.
+- **Rate-limit** de login (10 intentos/5 min por IP).
+- **Webhook ofimática** autenticado por secreto compartido.
 
 ## Dominio + TLS
 - Crear registro DNS **`crm.jepmobiliari.com` → IP pública** del server.

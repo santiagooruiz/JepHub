@@ -8,6 +8,7 @@ import {
   SESSION_COOKIE,
 } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { rateLimit, clientIp } from "@/lib/rate-limit";
 
 const schema = z.object({
   email: z.string().email(),
@@ -15,6 +16,15 @@ const schema = z.object({
 });
 
 export async function POST(req: Request) {
+  // Anti fuerza-bruta: 10 intentos por IP cada 5 minutos.
+  const rl = rateLimit(`login:${clientIp(req)}`, 10, 5 * 60_000);
+  if (!rl.ok) {
+    return NextResponse.json(
+      { error: "Demasiados intentos. Intenta más tarde." },
+      { status: 429, headers: { "Retry-After": String(rl.retryAfter) } }
+    );
+  }
+
   const body = await req.json().catch(() => null);
   const parsed = schema.safeParse(body);
   if (!parsed.success) {

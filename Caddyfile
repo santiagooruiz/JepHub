@@ -1,0 +1,12 @@
+# Reverse proxy + TLS automático (Let's Encrypt). APP_DOMAIN se inyecta por compose.
+# Para pruebas locales sin dominio: exporta APP_DOMAIN=":80" (sin TLS).
+{$APP_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy web:3000
+
+	header {
+		# HSTS (2 años). Otras cabeceras de seguridad las emite la app (next.config).
+		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+		-Server
+	}
+}
