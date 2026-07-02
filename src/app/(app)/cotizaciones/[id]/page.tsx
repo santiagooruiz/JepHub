@@ -12,6 +12,7 @@ import { quoteEstadoVariant, formatMoney } from "@/features/quotes/types";
 import { QuoteStateSelect } from "@/features/quotes/state-select";
 import { SignaturePanel } from "@/features/quotes/signature-panel";
 import { GenerateOrderButton } from "@/features/orders/order-controls";
+import { RequestDesignButton } from "@/features/design/request-design-button";
 import { RegisterActivity } from "@/features/activity/register-activity";
 import { Timeline } from "@/features/activity/timeline";
 
@@ -44,9 +45,15 @@ export default async function CotizacionDetallePage({
       items: true,
       signature: { select: { estado: true } },
       order: { select: { id: true } },
+      designRequests: {
+        where: { deletedAt: null },
+        select: { id: true },
+        take: 1,
+      },
     },
   });
   if (!q) notFound();
+  const canRequestDesign = user.ability.can("create", "backlog_design");
 
   const [activities, param] = await Promise.all([
     db.activity.findMany({
@@ -210,6 +217,20 @@ export default async function CotizacionDetallePage({
               )}
             </div>
           </Card>
+
+          {canRequestDesign && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Diseño</CardTitle>
+              </CardHeader>
+              <div className="px-4 pb-4">
+                <RequestDesignButton
+                  quoteId={q.id}
+                  designRequestId={q.designRequests[0]?.id ?? null}
+                />
+              </div>
+            </Card>
+          )}
 
           <Card>
             <CardHeader>

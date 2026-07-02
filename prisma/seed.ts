@@ -546,6 +546,96 @@ async function main() {
     }
   }
 
+  // ── Diseño: Backlog + Biblioteca Especiales (demo idempotente) ──
+  const disenadorUser = await db.user.findFirst({
+    where: { companyId: company.id, role: { name: "Diseñador" } },
+  });
+  if ((await db.designRequest.count({ where: { companyId: company.id } })) === 0) {
+    // 1) Solicitud desde una cotización real
+    const dr1 = await db.designRequest.create({
+      data: {
+        companyId: company.id,
+        numero: 1,
+        quoteId: q1?.id,
+        clientId: q1?.clientId,
+        designerId: disenadorUser?.id,
+        estado: "Proceso de diseño",
+        descripcion: "PUESTO CALL CENTER — ajuste de acabados y despiece",
+        datosEntrada: "Requiere superficie en formica con canto por definir.",
+        requisitosTecnicos: "Estructura metálica, pintura electrostática.",
+      },
+    });
+    // 2) Producto interno en etapa temprana
+    await db.designRequest.create({
+      data: {
+        companyId: company.id,
+        numero: 2,
+        interno: true,
+        estado: "PT precio comercial",
+        descripcion: "MESA HEXAGONAL DIÁMETRO 1200 CON CONECTIVIDAD",
+        datosEntrada: "Desarrollo propio para catálogo.",
+      },
+    });
+    // 3) Diseño finalizado → se promueve a Biblioteca Especiales
+    const dr3 = await db.designRequest.create({
+      data: {
+        companyId: company.id,
+        numero: 3,
+        interno: true,
+        designerId: disenadorUser?.id,
+        estado: "Finalizados",
+        descripcion: "MESA HEXAGONAL DIÁMETRO 1200 CON CONECTIVIDAD",
+        despiece: "despiece-mesa-hex.pdf",
+        armadoGeneral: "armado-mesa-hex.pdf",
+        planosTecnicos: "planos-mesa-hex.dwg",
+      },
+    });
+
+    const special = await db.specialDesign.create({
+      data: {
+        companyId: company.id,
+        codigo: `ESP-${dr3.numero}`,
+        designRequestId: dr3.id,
+        creadorId: disenadorUser?.id,
+        tipo: "DESARROLLO PROPIO",
+        estado: "EN DISEÑO",
+        descripcion: "MESA HEXAGONAL DIÁMETRO 1200 CON CONECTIVIDAD",
+        precioVentaPublico: 3850000,
+        precioVentaDto: 3200000,
+        cantRequerida: 1,
+      },
+    });
+    await db.activity.createMany({
+      data: [
+        {
+          companyId: company.id,
+          entityType: "DESIGN",
+          designRequestId: dr1.id,
+          accion: "Solicitud creada desde cotización",
+          fechaHora: new Date(Date.now() - 5 * 86400000),
+          userId: asesorUser?.id,
+          auto: true,
+        },
+        {
+          companyId: company.id,
+          entityType: "SPECIAL",
+          specialDesignId: special.id,
+          accion: `Creado desde Backlog N° ${dr3.numero}`,
+          fechaHora: new Date(Date.now() - 1 * 86400000),
+          userId: disenadorUser?.id,
+          auto: true,
+        },
+      ],
+    });
+    await db.specialDesignMessage.create({
+      data: {
+        specialDesignId: special.id,
+        userId: disenadorUser?.id,
+        body: "Render 3D listo; falta confirmar color de tapa con el cliente.",
+      },
+    });
+  }
+
   const counts = {
     roles: await db.role.count(),
     permissions: await db.permission.count(),
@@ -563,6 +653,8 @@ async function main() {
     orders: await db.order.count(),
     contacts: await db.contact.count(),
     activities: await db.activity.count(),
+    designRequests: await db.designRequest.count(),
+    specialDesigns: await db.specialDesign.count(),
   };
   console.log("Seed completado:", counts);
 }
