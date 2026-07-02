@@ -186,6 +186,8 @@ async function main() {
     { name: "Administrador Sistemas", email: "sistemas@jepmobiliari.com", role: "Administrador", cargo: "Administrador" },
     { name: "Asesora Demo", email: "asesor.demo@jepmobiliari.com", role: "Asesor", cargo: "Asesor de proyectos" },
     { name: "Diseñador Demo", email: "disenador.demo@jepmobiliari.com", role: "Diseñador", cargo: "Diseñador" },
+    { name: "Asesor Demo 2", email: "asesor2.demo@jepmobiliari.com", role: "Asesor", cargo: "Asesor de proyectos" },
+    { name: "Asesor Demo 3", email: "asesor3.demo@jepmobiliari.com", role: "Asesor", cargo: "Asesor de proyectos" },
     { name: "Consultor Demo", email: "consultor.demo@jepmobiliari.com", role: "Consultor", cargo: "Consultor", status: "INACTIVE" },
   ];
 
@@ -634,6 +636,110 @@ async function main() {
         body: "Render 3D listo; falta confirmar color de tapa con el cliente.",
       },
     });
+  }
+
+  // ── Enriquecer datos para Reportes/BI (idempotente) ──
+  const asesoresPool = await db.user.findMany({
+    where: { companyId: company.id, role: { name: "Asesor" } },
+    orderBy: { name: "asc" },
+  });
+  const pool = asesoresPool.length ? asesoresPool : asesorUser ? [asesorUser] : [];
+
+  if (
+    pool.length &&
+    opps.length &&
+    (await db.quote.count({ where: { companyId: company.id } })) < 4
+  ) {
+    const estadosCtz = [
+      "Enviada", "Aprobada", "Pendiente Aprobación", "No aprobada", "Detenida", "Aprobada",
+    ];
+    const probs = ["UNDEFINED", "HIGH", "FIXED"] as const;
+    const combos: [string, number, number?][][] = [
+      [["CALL-CENTER", 2], ["FLETE", 1]],
+      [["SILLA-MEGA", 6, 15], ["FLETE", 2]],
+      [["S60120U25", 1], ["PMS-120", 2]],
+      [["CALL-CENTER", 4], ["SILLA-MEGA", 4, 10]],
+      [["PMS-120", 3], ["FLETE", 1]],
+      [["S60120U25", 2], ["CALL-CENTER", 1]],
+    ];
+    let numero = 3;
+    for (let i = 0; i < combos.length; i++) {
+      const opp = opps[i % opps.length];
+      const asesorU = pool[i % pool.length];
+      const estado = estadosCtz[i % estadosCtz.length];
+      const items = combos[i].map(([c, cant, desc]) => itemFrom(c, cant, desc ?? 0));
+      const subtotal = items.reduce((s, it) => s + it.total, 0);
+      const impuesto = subtotal * 0.19;
+      const createdAt = new Date(Date.now() - (10 + i * 42) * 86400000);
+      const q = await db.quote.create({
+        data: {
+          companyId: company.id,
+          numero: numero++,
+          clientId: opp.clientId,
+          opportunityId: opp.id,
+          registeredById: asesorU?.id,
+          estado,
+          probabilidad: probs[i % probs.length],
+          createdAt,
+          fechaVencimiento: new Date(createdAt.getTime() + 30 * 86400000),
+          subtotal,
+          impuesto,
+          total: subtotal + impuesto,
+          items: { create: items },
+        },
+      });
+      // Convertir las aprobadas en pedido (para conversión y BI Pedidos)
+      if (estado === "Aprobada") {
+        const lastOrder = await db.order.findFirst({
+          where: { companyId: company.id },
+          orderBy: { numero: "desc" },
+          select: { numero: true },
+        });
+        await db.order.create({
+          data: {
+            companyId: company.id,
+            numero: (lastOrder?.numero ?? 0) + 1,
+            clientId: q.clientId,
+            opportunityId: q.opportunityId,
+            quoteId: q.id,
+            advisorId: asesorU?.id,
+            estado: i % 2 === 0 ? "En Producción" : "Facturado",
+            createdAt,
+            subtotal,
+            impuesto,
+            total: subtotal + impuesto,
+            items: { create: items },
+            approvals: {
+              create: (["INGRESO", "FABRICACION", "INSTALACION", "FACTURACION"] as const).map(
+                (kind) => ({ kind })
+              ),
+            },
+            erpSync: { create: {} },
+          },
+        });
+      }
+    }
+  }
+
+  // Actividades repartidas en el último mes (para el Calendario)
+  if ((await db.activity.count({ where: { companyId: company.id } })) < 8 && clientsAll.length) {
+    const acciones = ["Llamada", "Visita", "Email", "Observación", "Enviada", "Registrar"];
+    const actUsers = [asesorUser, ...pool, disenadorUser].filter(Boolean);
+    const data = Array.from({ length: 24 }, (_, i) => {
+      const cl = clientsAll[i % clientsAll.length];
+      const u = actUsers[i % actUsers.length];
+      return {
+        companyId: company.id,
+        entityType: "CLIENT" as const,
+        clientId: cl.id,
+        accion: acciones[i % acciones.length],
+        fechaHora: new Date(Date.now() - (i % 28) * 86400000 - (i % 6) * 3600000),
+        observaciones: null,
+        userId: u?.id,
+        auto: false,
+      };
+    });
+    await db.activity.createMany({ data });
   }
 
   const counts = {
