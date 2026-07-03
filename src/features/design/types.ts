@@ -93,10 +93,15 @@ export type BacklogRow = {
   nPedidoOfimatica: string;
   disenador: string;
   estado: string;
-  // Entregables: URL/nombre del archivo, o "" si no existe aún
-  despiece: string;
-  armadoGeneral: string;
-  planosTecnicos: string;
+  // Entregables: un chip por archivo de la categoría (azul si ya validado)
+  despiece: DeliverableChip[];
+  armadoGeneral: DeliverableChip[];
+  planosTecnicos: DeliverableChip[];
+};
+
+export type DeliverableChip = {
+  url: string;
+  aprobado: boolean;
 };
 
 export type SpecialCard = {

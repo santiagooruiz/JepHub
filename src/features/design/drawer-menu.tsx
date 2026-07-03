@@ -3,11 +3,18 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronDown, ImagePlus, MessageSquare, Paperclip, Ban } from "lucide-react";
+import {
+  Ban,
+  BadgeCheck,
+  ChevronDown,
+  ImagePlus,
+  MessageSquare,
+  Paperclip,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { updateDesignPlanning, updateDesignState } from "./actions";
+import { updateDesignPlanning, updateDesignState, finalApproval } from "./actions";
 
 const itemCls =
   "flex w-full items-center gap-2 rounded-sm px-2.5 py-1.5 text-left text-sm hover:bg-accent";
@@ -52,6 +59,20 @@ export function DrawerMenu({
     });
   }
 
+  function aprobacionFinal() {
+    if (
+      !window.confirm(
+        "¿Realizar la aprobación final? El producto pasará a \"Finalizados\"."
+      )
+    )
+      return;
+    start(async () => {
+      await finalApproval(id);
+      setOpen(false);
+      router.refresh();
+    });
+  }
+
   return (
     <div className="relative">
       <button
@@ -67,6 +88,9 @@ export function DrawerMenu({
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
           <div className="absolute right-0 z-20 mt-1 w-64 rounded-md border bg-popover p-1 shadow-md">
+            <button className={itemCls} disabled={pending} onClick={aprobacionFinal}>
+              <BadgeCheck className="size-4 text-[hsl(var(--success))]" /> Aprobación final
+            </button>
             <Link href={`${selfHref}&tab=archivos`} scroll={false} className={itemCls} onClick={() => setOpen(false)}>
               <Paperclip className="size-4 text-muted-foreground" /> Subir archivo
             </Link>

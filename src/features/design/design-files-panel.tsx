@@ -10,8 +10,16 @@ import { cn } from "@/lib/utils";
 import { DESIGN_FILE_CATEGORIES } from "./types";
 import { saveDesignFile, deleteDesignFile, setDesignFileEstado } from "./actions";
 
-/** Categoría cuyo archivo pasa por aprobación (ficha técnica). */
-const CATEGORIA_APROBABLE = "Ficha Técnica / Ficha de ajuste";
+/**
+ * Categorías cuyos archivos pasan por aprobación/validación: la ficha técnica
+ * (aprobación FT) y los entregables (validación en "Pendiente Validación").
+ */
+const CATEGORIAS_APROBABLES = [
+  "Ficha Técnica / Ficha de ajuste",
+  "Despiece",
+  "Armado general",
+  "Planos Técnicos",
+];
 
 export type DesignFileItem = {
   id: string;
@@ -91,7 +99,9 @@ export function DesignFilesPanel({
 
   function FileChip({ f }: { f: DesignFileItem }) {
     const aprobable =
-      canEdit && !f.borrado && f.tipoArchivo === CATEGORIA_APROBABLE;
+      canEdit &&
+      !f.borrado &&
+      CATEGORIAS_APROBABLES.includes(f.tipoArchivo ?? "");
     return (
       <div className={cn("rounded-md border px-3 py-1.5 text-sm", f.borrado && "opacity-70")}>
         <div className="flex items-center justify-between gap-2">

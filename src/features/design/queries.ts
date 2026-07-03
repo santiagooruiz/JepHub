@@ -1,6 +1,12 @@
 import { db } from "@/lib/db";
 import { clientDisplayName } from "@/features/clients/queries";
-import { formatMoney, type BacklogRow, type SpecialCard } from "./types";
+import {
+  formatMoney,
+  DELIVERABLE_BY_CATEGORY,
+  type BacklogRow,
+  type DeliverableChip,
+  type SpecialCard,
+} from "./types";
 
 const dateFmt = (d: Date | null) =>
   d ? d.toLocaleDateString("es-CO", { year: "numeric", month: "2-digit", day: "2-digit" }) : "";
@@ -49,9 +55,32 @@ export async function listDesignRequests(companyId: string): Promise<BacklogRow[
         },
       },
       designer: { select: { name: true } },
+      attachments: {
+        where: {
+          entityType: "DESIGN",
+          deletedAt: null,
+          tipoArchivo: { in: Object.keys(DELIVERABLE_BY_CATEGORY) },
+        },
+        select: { url: true, tipoArchivo: true, estado: true },
+        orderBy: { createdAt: "asc" },
+      },
     },
     orderBy: { numero: "desc" },
   });
+
+  // Chips de una categoría de entregable; si no hay archivos registrados,
+  // cae al campo legado (URL única) de DesignRequest.
+  const chips = (
+    r: (typeof rows)[number],
+    categoria: string,
+    legacy: string | null
+  ): DeliverableChip[] => {
+    const files = r.attachments
+      .filter((a) => a.tipoArchivo === categoria)
+      .map((a) => ({ url: a.url, aprobado: a.estado === "APROBADA" }));
+    if (files.length) return files;
+    return legacy ? [{ url: legacy, aprobado: false }] : [];
+  };
 
   return rows.map((r) => ({
     id: r.id,
@@ -79,9 +108,9 @@ export async function listDesignRequests(companyId: string): Promise<BacklogRow[
       r.nPedidoOfimatica ?? r.order?.erpSync?.nPedidoOfimatica ?? "",
     disenador: r.designer?.name ?? "",
     estado: r.estado,
-    despiece: r.despiece ?? "",
-    armadoGeneral: r.armadoGeneral ?? "",
-    planosTecnicos: r.planosTecnicos ?? "",
+    despiece: chips(r, "Despiece", r.despiece),
+    armadoGeneral: chips(r, "Armado general", r.armadoGeneral),
+    planosTecnicos: chips(r, "Planos Técnicos", r.planosTecnicos),
   }));
 }
 

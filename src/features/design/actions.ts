@@ -533,9 +533,58 @@ export async function setDesignFileEstado(
       file.designRequestId,
       `${estado === "APROBADA" ? "Aprobó" : "Rechazó"} el archivo ${file.url}${file.tipoArchivo ? ` de tipo ${file.tipoArchivo}` : ""}`
     );
+
+    // Si con esta validación quedan cubiertos los 3 entregables, deja
+    // constancia (como el aviso del CRM original en Pendiente Validación).
+    if (estado === "APROBADA") {
+      const entregables = Object.keys(DELIVERABLE_BY_CATEGORY);
+      const validados = await db.attachment.findMany({
+        where: {
+          designRequestId: file.designRequestId,
+          entityType: "DESIGN",
+          deletedAt: null,
+          estado: "APROBADA",
+          tipoArchivo: { in: entregables },
+        },
+        select: { tipoArchivo: true },
+      });
+      const cats = new Set(validados.map((v) => v.tipoArchivo));
+      if (entregables.every((c) => cats.has(c))) {
+        await logDesignActivity(
+          user.companyId,
+          user.id,
+          "DESIGN",
+          file.designRequestId,
+          "Archivos [Despiece] [Armado general] [Planos Técnicos] validados completamente. El producto queda listo para la aprobación final."
+        );
+      }
+    }
     revalidatePath(`/backlog/${file.designRequestId}`);
   }
   revalidatePath("/backlog");
+  return { ok: true };
+}
+
+/**
+ * Aprobación final (estado "Pendiente Validación"): cierra el ciclo de diseño
+ * y pasa el producto a "Finalizados".
+ */
+export async function finalApproval(id: string): Promise<ActionResult> {
+  const user = await requirePermission("edit", "backlog_design");
+  const { count } = await db.designRequest.updateMany({
+    where: { id, companyId: user.companyId, deletedAt: null },
+    data: { estado: BACKLOG_ESTADO_FINAL },
+  });
+  if (!count) return { ok: false, error: "No encontrado." };
+  await logDesignActivity(
+    user.companyId,
+    user.id,
+    "DESIGN",
+    id,
+    "Realizó la aprobación final del producto"
+  );
+  revalidatePath("/backlog");
+  revalidatePath(`/backlog/${id}`);
   return { ok: true };
 }
 

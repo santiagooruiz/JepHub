@@ -7,23 +7,61 @@ import { Eye, FileText, Minus, ImageIcon } from "lucide-react";
 
 import { DataTable } from "@/components/data-table/data-table";
 import { Badge } from "@/components/ui/badge";
-import { type BacklogRow, backlogEstadoVariant } from "./types";
+import { cn } from "@/lib/utils";
+import {
+  type BacklogRow,
+  type DeliverableChip,
+  backlogEstadoVariant,
+} from "./types";
 
-/** Entregable: chip PDF clicable si hay archivo (como el CRM original). */
-function Deliverable({ url }: { url: string }) {
-  if (!url) return <Minus className="size-4 text-muted-foreground/50" />;
-  const esLink = /^(https?:)?\//.test(url);
-  const chip = (
-    <span className="inline-flex size-7 items-center justify-center rounded bg-[hsl(var(--destructive))]/10">
-      <FileText className="size-4 text-[hsl(var(--destructive))]" />
-    </span>
-  );
-  return esLink ? (
-    <a href={url} target="_blank" rel="noreferrer" title={url} aria-label="Abrir entregable">
-      {chip}
-    </a>
-  ) : (
-    <span title={url}>{chip}</span>
+const esImagen = (url: string) => /\.(jpe?g|png|gif|webp)$/i.test(url);
+
+/**
+ * Entregables: un chip por archivo, como el CRM original.
+ * Azul = validado · ámbar = imagen · rojo = PDF sin validar.
+ */
+function Deliverables({ files }: { files: DeliverableChip[] }) {
+  if (!files.length) return <Minus className="size-4 text-muted-foreground/50" />;
+  return (
+    <div className="flex max-w-28 flex-wrap gap-1">
+      {files.map((f, i) => {
+        const tone = f.aprobado
+          ? "bg-primary/10 text-primary"
+          : esImagen(f.url)
+            ? "bg-amber-500/15 text-amber-600"
+            : "bg-[hsl(var(--destructive))]/10 text-[hsl(var(--destructive))]";
+        const chip = (
+          <span
+            className={cn(
+              "inline-flex size-7 items-center justify-center rounded",
+              tone
+            )}
+          >
+            {esImagen(f.url) ? (
+              <ImageIcon className="size-4" />
+            ) : (
+              <FileText className="size-4" />
+            )}
+          </span>
+        );
+        return /^(https?:)?\//.test(f.url) ? (
+          <a
+            key={i}
+            href={f.url}
+            target="_blank"
+            rel="noreferrer"
+            title={`${f.url}${f.aprobado ? " · validado" : ""}`}
+            aria-label="Abrir entregable"
+          >
+            {chip}
+          </a>
+        ) : (
+          <span key={i} title={`${f.url}${f.aprobado ? " · validado" : ""}`}>
+            {chip}
+          </span>
+        );
+      })}
+    </div>
   );
 }
 
@@ -183,17 +221,17 @@ export function BacklogTable({
     {
       id: "despiece",
       header: "Despiece",
-      cell: ({ row }) => <Deliverable url={row.original.despiece} />,
+      cell: ({ row }) => <Deliverables files={row.original.despiece} />,
     },
     {
       id: "armado",
       header: "Armado",
-      cell: ({ row }) => <Deliverable url={row.original.armadoGeneral} />,
+      cell: ({ row }) => <Deliverables files={row.original.armadoGeneral} />,
     },
     {
       id: "planos",
       header: "Planos",
-      cell: ({ row }) => <Deliverable url={row.original.planosTecnicos} />,
+      cell: ({ row }) => <Deliverables files={row.original.planosTecnicos} />,
     },
     {
       id: "acciones",

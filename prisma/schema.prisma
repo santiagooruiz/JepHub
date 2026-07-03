@@ -308,6 +308,7 @@ model Attachment {
   quoteId       String?
   orderId       String?
   designRequestId String?
+  designRequest   DesignRequest? @relation(fields: [designRequestId], references: [id])
   specialDesignId String?
   tipoArchivo   String?
   bucket        String     @default("archivos")
@@ -544,6 +545,7 @@ model DesignRequest {
   deletedAt   DateTime?
   special     SpecialDesign?
   messages    DesignRequestMessage[]
+  attachments Attachment[]
 
   @@unique([companyId, numero])
   @@index([companyId, estado])
