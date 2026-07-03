@@ -16,6 +16,7 @@ type QuoteWithRels = Prisma.QuoteGetPayload<{ include: typeof quoteDocInclude }>
 export function mapQuoteToDoc(q: QuoteWithRels): QuoteDocData {
   return {
     numero: q.numero,
+    fecha: q.createdAt.toLocaleDateString("es-CO"),
     clienteNombre: clientDisplayName(q.client),
     clienteDoc: `${q.client.tipoDocumento ?? ""} ${q.client.numeroDocumento ?? ""}`.trim(),
     registradoPor: q.registeredBy?.name ?? "",
@@ -27,6 +28,7 @@ export function mapQuoteToDoc(q: QuoteWithRels): QuoteDocData {
       : "",
     ordenCompra: q.ordenCompra ?? "",
     direccionEnvio: q.direccionEnvio ?? "",
+    observacion: q.observacion ?? "",
     estado: q.estado,
     items: q.items.map((it) => ({
       referencia: it.referencia ?? "",

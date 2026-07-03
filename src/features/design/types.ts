@@ -49,16 +49,47 @@ export function specialEstadoVariant(estado: string): BadgeProps["variant"] {
   }
 }
 
+/**
+ * Categorías de archivo de una solicitud de diseño (tab "Archivos"), según el
+ * checklist del CRM original. Las tres marcadas como entregable alimentan las
+ * columnas ✓ Despiece / Armado / Planos del listado.
+ */
+export const DESIGN_FILE_CATEGORIES = [
+  "Ficha Comercial",
+  "Ficha Técnica / Ficha de ajuste",
+  "Despiece",
+  "Armado general",
+  "Planos Técnicos",
+  "Soporte de precio",
+  "Archivo de validación",
+  "Soporte datos de entrada",
+] as const;
+
+export type DesignFileCategory = (typeof DESIGN_FILE_CATEGORIES)[number];
+
+/** Categoría de archivo → campo entregable de DesignRequest (si aplica). */
+export const DELIVERABLE_BY_CATEGORY: Partial<
+  Record<DesignFileCategory, "despiece" | "armadoGeneral" | "planosTecnicos">
+> = {
+  Despiece: "despiece",
+  "Armado general": "armadoGeneral",
+  "Planos Técnicos": "planosTecnicos",
+};
+
 export type BacklogRow = {
   id: string;
   numero: number;
-  tipo: string; // "[INTERNO]" o "Cotización N°…"
+  tipo: string; // "[INTERNO]", "Cotización N°…" o "Pedido #…"
+  origenEstado: string; // estado de la cotización/pedido de origen (si aplica)
   quoteId: string | null;
+  orderId: string | null;
   imagen: string | null;
   cliente: string;
   asesor: string;
   fechaSolicitud: string;
   descripcion: string;
+  datosEntrada: string;
+  requisitosTecnicos: string;
   nPedidoOfimatica: string;
   disenador: string;
   estado: string;

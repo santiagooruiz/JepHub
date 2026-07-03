@@ -26,8 +26,8 @@ export default async function PrintQuotePage({
   if (!q) notFound();
 
   return (
-    <div className="mx-auto max-w-3xl p-6">
-      <div className="mb-4 flex justify-end">
+    <div className="mx-auto max-w-3xl p-6 print:max-w-none print:p-0">
+      <div className="mb-4 flex justify-end print:hidden">
         <PrintButton />
       </div>
       <QuoteDocument q={mapQuoteToDoc(q)} />

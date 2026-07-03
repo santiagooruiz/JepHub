@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/guard";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { PermissionToggle } from "@/features/roles/permission-toggle";
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +39,7 @@ const MODULE_LABELS: Record<string, string> = {
 export default async function RolesPage() {
   const user = await requirePermission("view", "roles");
   const companyId = user.companyId;
+  const canManage = user.ability.can("manage", "roles");
 
   const [roles, permissions, activeRps] = await Promise.all([
     db.role.findMany({ where: { companyId } }),
@@ -78,6 +80,8 @@ export default async function RolesPage() {
           </h1>
           <p className="text-sm text-muted-foreground">
             {permissions.length} permisos · {roles.length} roles
+            {canManage &&
+              " · haz clic en una celda para activar/desactivar (Administrador siempre tiene todo)"}
           </p>
         </div>
       </div>
@@ -108,6 +112,7 @@ export default async function RolesPage() {
                 roles={roles}
                 active={active}
                 cols={roles.length + 1}
+                canManage={canManage}
               />
             ))}
           </tbody>
@@ -123,12 +128,14 @@ function ModuleRows({
   roles,
   active,
   cols,
+  canManage,
 }: {
   label: string;
   perms: { id: string; key: string; name: string }[];
   roles: { id: string; name: string }[];
   active: Set<string>;
   cols: number;
+  canManage: boolean;
 }) {
   return (
     <>
@@ -148,9 +155,16 @@ function ModuleRows({
           </td>
           {roles.map((r) => {
             const on = active.has(`${r.id}:${p.id}`);
+            const editable = canManage && r.name !== "Administrador";
             return (
               <td key={r.id} className="px-3 py-2 text-center">
-                {on ? (
+                {editable ? (
+                  <PermissionToggle
+                    roleId={r.id}
+                    permissionId={p.id}
+                    active={on}
+                  />
+                ) : on ? (
                   <Badge variant="success">ACTIVO</Badge>
                 ) : (
                   <Badge variant="muted">—</Badge>

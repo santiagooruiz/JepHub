@@ -5,13 +5,21 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/guard";
 import type { ActionResult } from "@/features/config/actions";
-import { BACKLOG_ESTADOS, BACKLOG_ESTADO_FINAL } from "./types";
+import {
+  BACKLOG_ESTADOS,
+  BACKLOG_ESTADO_FINAL,
+  DELIVERABLE_BY_CATEGORY,
+  formatMoney,
+} from "./types";
 import {
   designPlanningSchema,
   entregablesSchema,
   specialSchema,
   messageSchema,
   specialFileSchema,
+  designMessageSchema,
+  designFileSchema,
+  designPrecioSchema,
 } from "./schema";
 
 /** Registra un evento automático en el histórico de una entidad de diseño. */
@@ -71,6 +79,7 @@ export async function requestDesign(
       numero: await nextNumero(user.companyId),
       quoteId: quote.id,
       clientId: quote.clientId,
+      requestedById: user.id,
       imagen: first?.imagen ?? null,
       descripcion: first?.descripcion ?? null,
       datosEntrada: first?.observacionesInternas ?? null,
@@ -97,6 +106,65 @@ export async function requestDesign(
   return { ok: true, id: dr.id };
 }
 
+/**
+ * "Solicitar ficha técnica": envía un pedido a la cola de diseño (entra
+ * directo en el estado "PT Ficha Técnica").
+ */
+export async function requestFichaTecnica(
+  orderId: string
+): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+  const user = await requirePermission("create", "backlog_design");
+
+  const order = await db.order.findFirst({
+    where: { id: orderId, companyId: user.companyId, deletedAt: null },
+    include: {
+      items: { take: 1, orderBy: { id: "asc" } },
+      designRequests: { where: { deletedAt: null }, select: { id: true }, take: 1 },
+    },
+  });
+  if (!order) return { ok: false, error: "Pedido no encontrado." };
+  if (order.designRequests[0]) return { ok: true, id: order.designRequests[0].id };
+
+  const first = order.items[0];
+  const dr = await db.designRequest.create({
+    data: {
+      companyId: user.companyId,
+      numero: await nextNumero(user.companyId),
+      orderId: order.id,
+      clientId: order.clientId,
+      requestedById: user.id,
+      imagen: first?.imagen ?? null,
+      descripcion: first?.descripcion ?? null,
+      estado: "PT Ficha Técnica",
+    },
+  });
+
+  await Promise.all([
+    logDesignActivity(
+      user.companyId,
+      user.id,
+      "DESIGN",
+      dr.id,
+      "Solicitud de ficha técnica creada desde pedido"
+    ),
+    db.activity.create({
+      data: {
+        companyId: user.companyId,
+        entityType: "ORDER",
+        orderId: order.id,
+        accion: "Solicitó ficha técnica a diseño",
+        fechaHora: new Date(),
+        userId: user.id,
+        auto: true,
+      },
+    }),
+  ]);
+
+  revalidatePath("/backlog");
+  revalidatePath(`/pedidos/${orderId}`);
+  return { ok: true, id: dr.id };
+}
+
 /** Producto [INTERNO]: nueva solicitud de diseño con formato PR-DI-01. */
 export async function createInternalDesign(
   input: unknown
@@ -114,6 +182,7 @@ export async function createInternalDesign(
       companyId: user.companyId,
       numero: await nextNumero(user.companyId),
       interno: true,
+      requestedById: user.id,
       ...data,
     },
   });
@@ -153,6 +222,33 @@ export async function updateEntregables(input: unknown): Promise<ActionResult> {
   });
   if (!count) return { ok: false, error: "No encontrado." };
   await logDesignActivity(user.companyId, user.id, "DESIGN", id, "Entregables actualizados");
+
+  // Avisa al solicitante (p.ej. el Consultor que pidió el despiece) que ya
+  // puede consultar/descargar los entregables.
+  const dr = await db.designRequest.findFirst({
+    where: { id, companyId: user.companyId },
+    select: { numero: true, descripcion: true, requestedById: true },
+  });
+  if (dr?.requestedById && dr.requestedById !== user.id) {
+    const subidos = [
+      data.despiece && "despiece",
+      data.armadoGeneral && "armado general",
+      data.planosTecnicos && "planos técnicos",
+    ].filter(Boolean).join(", ");
+    await db.notification.create({
+      data: {
+        companyId: user.companyId,
+        userId: dr.requestedById,
+        tipo: "diseño",
+        titulo: `Diseño N°${dr.numero}: entregables disponibles`,
+        cuerpo: subidos
+          ? `${user.name} subió ${subidos}${dr.descripcion ? ` · ${dr.descripcion}` : ""}.`
+          : `${user.name} actualizó los entregables${dr.descripcion ? ` · ${dr.descripcion}` : ""}.`,
+        href: `/backlog/${id}`,
+      },
+    });
+  }
+
   revalidatePath(`/backlog/${id}`);
   return { ok: true };
 }
@@ -228,6 +324,9 @@ export async function convertToSpecial(
       creadorId: dr.designerId ?? user.id,
       descripcion: dr.descripcion,
       imagen: dr.imagen,
+      precioVentaPublico: dr.precioVentaPublico,
+      precioVentaDto: dr.precioVentaDto,
+      cantRequerida: dr.cantRequerida,
     },
   });
   await logDesignActivity(
@@ -240,6 +339,147 @@ export async function convertToSpecial(
   revalidatePath("/especiales");
   revalidatePath(`/backlog/${id}`);
   return { ok: true, id: special.id };
+}
+
+/**
+ * Precio comercial del producto (etapa "PT precio comercial"). El cambio de
+ * precio público queda en el histórico, como en el CRM original.
+ */
+export async function updateDesignPrecio(input: unknown): Promise<ActionResult> {
+  const user = await requirePermission("edit", "backlog_design");
+  const parsed = designPrecioSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Datos inválidos" };
+  }
+  const { id, ...data } = parsed.data;
+
+  const dr = await db.designRequest.findFirst({
+    where: { id, companyId: user.companyId, deletedAt: null },
+    select: { precioVentaPublico: true },
+  });
+  if (!dr) return { ok: false, error: "No encontrado." };
+
+  await db.designRequest.update({ where: { id }, data });
+
+  const antes = dr.precioVentaPublico != null ? Number(dr.precioVentaPublico) : null;
+  if (data.precioVentaPublico != null && data.precioVentaPublico !== antes) {
+    await logDesignActivity(
+      user.companyId,
+      user.id,
+      "DESIGN",
+      id,
+      `${antes == null ? "Agregó" : "Actualizó"} el precio comercial del producto ${formatMoney(data.precioVentaPublico)}`
+    );
+  }
+
+  revalidatePath("/backlog");
+  revalidatePath(`/backlog/${id}`);
+  return { ok: true };
+}
+
+/** Mensaje en el chat interno de una solicitud del backlog (tab "Mensajes"). */
+export async function postDesignMessage(input: unknown): Promise<ActionResult> {
+  const user = await requirePermission("view", "backlog_design");
+  const parsed = designMessageSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Datos inválidos" };
+  }
+  const { designRequestId, body } = parsed.data;
+  const found = await db.designRequest.findFirst({
+    where: { id: designRequestId, companyId: user.companyId, deletedAt: null },
+    select: { id: true },
+  });
+  if (!found) return { ok: false, error: "No encontrado." };
+
+  await db.designRequestMessage.create({
+    data: { designRequestId, userId: user.id, body },
+  });
+  revalidatePath("/backlog");
+  return { ok: true };
+}
+
+/** Registra un archivo del backlog por categoría (tab "Archivos"). */
+export async function saveDesignFile(input: unknown): Promise<ActionResult> {
+  const user = await requirePermission("edit", "backlog_design");
+  const parsed = designFileSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Datos inválidos" };
+  }
+  const { designRequestId, tipoArchivo, observaciones, url } = parsed.data;
+  const dr = await db.designRequest.findFirst({
+    where: { id: designRequestId, companyId: user.companyId, deletedAt: null },
+    select: { id: true, numero: true, requestedById: true, despiece: true, armadoGeneral: true, planosTecnicos: true },
+  });
+  if (!dr) return { ok: false, error: "No encontrado." };
+
+  await db.attachment.create({
+    data: {
+      companyId: user.companyId,
+      entityType: "DESIGN",
+      designRequestId,
+      tipoArchivo,
+      observaciones: observaciones?.trim() || null,
+      bucket: "archivos",
+      url,
+    },
+  });
+  await logDesignActivity(
+    user.companyId,
+    user.id,
+    "DESIGN",
+    designRequestId,
+    `Subió el archivo ${url} de tipo ${tipoArchivo}`
+  );
+
+  // Si la categoría es un entregable (Despiece / Armado / Planos), marca el
+  // campo correspondiente para que el ✓ del listado refleje el archivo y se
+  // notifique al solicitante, igual que al editar entregables a mano.
+  const field = DELIVERABLE_BY_CATEGORY[tipoArchivo];
+  if (field && !dr[field]) {
+    await db.designRequest.update({
+      where: { id: designRequestId },
+      data: { [field]: url },
+    });
+    if (dr.requestedById && dr.requestedById !== user.id) {
+      await db.notification.create({
+        data: {
+          companyId: user.companyId,
+          userId: dr.requestedById,
+          tipo: "diseño",
+          titulo: `Diseño N°${dr.numero}: entregables disponibles`,
+          cuerpo: `${user.name} subió ${tipoArchivo}.`,
+          href: `/backlog/${designRequestId}`,
+        },
+      });
+    }
+  }
+
+  revalidatePath("/backlog");
+  revalidatePath(`/backlog/${designRequestId}`);
+  return { ok: true };
+}
+
+export async function deleteDesignFile(id: string): Promise<ActionResult> {
+  const user = await requirePermission("edit", "backlog_design");
+  const file = await db.attachment.findFirst({
+    where: { id, companyId: user.companyId, entityType: "DESIGN" },
+    select: { id: true, url: true, tipoArchivo: true, designRequestId: true },
+  });
+  if (!file) return { ok: false, error: "No encontrado." };
+
+  await db.attachment.delete({ where: { id: file.id } });
+  if (file.designRequestId) {
+    await logDesignActivity(
+      user.companyId,
+      user.id,
+      "DESIGN",
+      file.designRequestId,
+      `Eliminó el archivo ${file.url}${file.tipoArchivo ? ` de tipo ${file.tipoArchivo}` : ""}`
+    );
+    revalidatePath(`/backlog/${file.designRequestId}`);
+  }
+  revalidatePath("/backlog");
+  return { ok: true };
 }
 
 export async function updateSpecial(input: unknown): Promise<ActionResult> {

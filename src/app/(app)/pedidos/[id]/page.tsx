@@ -16,6 +16,7 @@ import {
 } from "@/features/orders/order-controls";
 import { RegisterActivity } from "@/features/activity/register-activity";
 import { Timeline } from "@/features/activity/timeline";
+import { RequestFichaTecnicaButton } from "@/features/design/request-design-button";
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +39,7 @@ export default async function PedidoDetallePage({
 }) {
   const user = await requirePermission("view", "orders");
   const canEdit = user.ability.can("edit", "orders");
+  const canRequestDesign = user.ability.can("create", "backlog_design");
   const { id } = await params;
 
   const o = await db.order.findFirst({
@@ -49,6 +51,7 @@ export default async function PedidoDetallePage({
       items: true,
       approvals: { include: { approvedBy: { select: { name: true } } } },
       erpSync: true,
+      designRequests: { where: { deletedAt: null }, select: { id: true }, take: 1 },
     },
   });
   if (!o) notFound();
@@ -197,6 +200,20 @@ export default async function PedidoDetallePage({
               />
             </div>
           </Card>
+
+          {canRequestDesign && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Diseño</CardTitle>
+              </CardHeader>
+              <div className="px-4 pb-4">
+                <RequestFichaTecnicaButton
+                  orderId={o.id}
+                  designRequestId={o.designRequests[0]?.id ?? null}
+                />
+              </div>
+            </Card>
+          )}
 
           <Card>
             <CardHeader>

@@ -86,7 +86,7 @@ export default async function EspecialDetallePage({
       label: `Mensajes (${s.messages.length})`,
       content: (
         <MessagesPanel
-          specialDesignId={s.id}
+          target={{ specialDesignId: s.id }}
           messages={s.messages.map((m) => ({
             id: m.id,
             body: m.body,

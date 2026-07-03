@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Send } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { postSpecialMessage } from "./actions";
+import { postSpecialMessage, postDesignMessage } from "./actions";
 
 export type MessageItem = {
   id: string;
@@ -14,14 +14,19 @@ export type MessageItem = {
   createdAt: string;
 };
 
+/** Dueño del chat: un diseño especial o una solicitud del backlog. */
+export type MessagesTarget =
+  | { specialDesignId: string }
+  | { designRequestId: string };
+
 const TA =
   "w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 export function MessagesPanel({
-  specialDesignId,
+  target,
   messages,
 }: {
-  specialDesignId: string;
+  target: MessagesTarget;
   messages: MessageItem[];
 }) {
   const router = useRouter();
@@ -33,7 +38,10 @@ export function MessagesPanel({
     e.preventDefault();
     setError(null);
     start(async () => {
-      const res = await postSpecialMessage({ specialDesignId, body });
+      const res =
+        "specialDesignId" in target
+          ? await postSpecialMessage({ ...target, body })
+          : await postDesignMessage({ ...target, body });
       if (res.ok) {
         setBody("");
         router.refresh();

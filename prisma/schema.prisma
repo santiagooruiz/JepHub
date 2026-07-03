@@ -158,8 +158,10 @@ model User {
   ordersAdvised      Order[]       @relation("OrderAdvisor")
   orderApprovals     OrderApproval[]
   designsAssigned      DesignRequest[]        @relation("DesignAssignee")
+  designsRequested     DesignRequest[]        @relation("DesignRequester")
   specialDesignsCreated SpecialDesign[]       @relation("SpecialCreator")
   specialMessages      SpecialDesignMessage[]
+  designMessages       DesignRequestMessage[]
   notifications        Notification[]
 }
 
@@ -402,6 +404,7 @@ model Order {
   approvals           OrderApproval[]
   erpSync             ErpSync?
   specialDesigns      SpecialDesign[]
+  designRequests      DesignRequest[]
 
   @@unique([companyId, numero])
   @@index([companyId, estado])
@@ -497,13 +500,18 @@ model DesignRequest {
   companyId   String
   company     Company  @relation(fields: [companyId], references: [id])
   numero      Int
-  // Origen: cotización o desarrollo interno
+  // Origen: cotización, pedido (pendiente ficha técnica) o desarrollo interno
   quoteId     String?
   quote       Quote?   @relation(fields: [quoteId], references: [id])
+  orderId     String?
+  order       Order?   @relation(fields: [orderId], references: [id])
   clientId    String?
   interno     Boolean  @default(false)
   designerId  String?
   designer    User?    @relation("DesignAssignee", fields: [designerId], references: [id])
+  // Quién solicitó el diseño (para notificarle cuando haya entregables)
+  requestedById String?
+  requestedBy   User?  @relation("DesignRequester", fields: [requestedById], references: [id])
   imagen      String?
   descripcion String?
   // Planificación de diseño & desarrollo (PR-DI-01)
@@ -514,6 +522,11 @@ model DesignRequest {
   requisitosLegales     String?
   disenosPrevios        String?
   estado      String   @default("PT precio comercial")
+  // Precio comercial del producto (etapa "PT precio comercial"; el asesor lo
+  // negocia con el cliente en "Especial sin aprobar cliente")
+  precioVentaPublico Decimal? @db.Decimal(15, 2)
+  precioVentaDto     Decimal? @db.Decimal(15, 2)
+  cantRequerida      Int?
   // Entregables de diseño (URL/nombre de archivo)
   despiece       String?
   armadoGeneral  String?
@@ -523,9 +536,21 @@ model DesignRequest {
   updatedAt   DateTime @updatedAt
   deletedAt   DateTime?
   special     SpecialDesign?
+  messages    DesignRequestMessage[]
 
   @@unique([companyId, numero])
   @@index([companyId, estado])
+}
+
+// Chat interno de la solicitud de diseño (tab "Mensajes" del backlog).
+model DesignRequestMessage {
+  id              String        @id @default(cuid())
+  designRequestId String
+  designRequest   DesignRequest @relation(fields: [designRequestId], references: [id], onDelete: Cascade)
+  userId          String?
+  user            User?         @relation(fields: [userId], references: [id])
+  body            String
+  createdAt       DateTime      @default(now())
 }
 
 // Biblioteca Especiales: catálogo de piezas/productos a medida (CÓDIGO ESPECIAL).

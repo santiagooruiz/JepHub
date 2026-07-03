@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/guard";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { UserStatusToggle } from "@/features/users/status-toggle";
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +30,7 @@ function StatusBadge({ status }: { status: string }) {
 export default async function UsuariosPage() {
   const user = await requirePermission("view", "users");
   const companyId = user.companyId;
+  const canEdit = user.ability.can("edit", "users");
 
   const [roles, users] = await Promise.all([
     db.role.findMany({
@@ -92,6 +94,7 @@ export default async function UsuariosPage() {
               <th className="px-3 py-2 font-medium">Cargo</th>
               <th className="px-3 py-2 font-medium">Perfil</th>
               <th className="px-3 py-2 font-medium">Estado</th>
+              {canEdit && <th className="px-3 py-2 font-medium">Acciones</th>}
             </tr>
           </thead>
           <tbody>
@@ -106,6 +109,15 @@ export default async function UsuariosPage() {
                 <td className="px-3 py-2">
                   <StatusBadge status={u.status} />
                 </td>
+                {canEdit && (
+                  <td className="px-3 py-2">
+                    {u.id === user.id ? (
+                      <span className="text-xs text-muted-foreground">Tú</span>
+                    ) : (
+                      <UserStatusToggle userId={u.id} status={u.status} />
+                    )}
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>

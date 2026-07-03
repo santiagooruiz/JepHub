@@ -6,10 +6,15 @@ import { cn } from "@/lib/utils";
 
 export function TabsLite({
   tabs,
+  defaultId,
 }: {
   tabs: { id: string; label: string; content: React.ReactNode }[];
+  /** Tab inicial (cae al primero si no existe). Cambiarlo requiere `key`. */
+  defaultId?: string;
 }) {
-  const [active, setActive] = React.useState(tabs[0]?.id);
+  const [active, setActive] = React.useState(
+    tabs.some((t) => t.id === defaultId) ? defaultId : tabs[0]?.id
+  );
   const current = tabs.find((t) => t.id === active) ?? tabs[0];
 
   return (

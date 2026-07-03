@@ -86,43 +86,66 @@ const PERMISSIONS: { key: string; name: string }[] = [
   { key: "roles.manage", name: "Gestionar roles/permisos" },
 ];
 
+// Modelo de permisos (decisión JEP, jul-2026): CONSULTA TRANSVERSAL —
+// todos los roles pueden VER todos los módulos operativos — pero cada rol
+// solo ESCRIBE en su dominio (el asesor no sube planos, diseño no toca
+// pedidos, el analista de pedido no edita cotizaciones, etc.).
+// Para afinar un rol, edita su entrada en GRANTS y re-ejecuta el seed:
+// activa lo nuevo y revoca lo que sobre.
+// ⚠️ La matriz también se administra en vivo desde /configuracion/roles;
+// re-ejecutar el seed RESETEA la matriz a lo definido aquí y pisa los
+// cambios hechos en la UI.
+const BASE_GRANTS = [
+  "clients.view",
+  "opportunities.view",
+  "quotes.view", "quotes.pdf",
+  "orders.view",
+  "backlog_design.view",
+  "special_designs.view",
+];
+
+// Diseñador y Diseñador Comercial operan igual: trabajan el backlog y los
+// planos, y sobre la cotización gestionan precio comercial/acabados y firma.
+const DESIGN_GRANTS = [
+  ...BASE_GRANTS,
+  "quotes.edit", "quotes.sign",
+  "backlog_design.create", "backlog_design.edit",
+];
+
 // ─── Asignación de permisos por rol ("*" = todos) ───
 const GRANTS: Record<string, string[] | "*"> = {
   Administrador: "*",
+  // Comercial: gestiona clientes, oportunidades y cotizaciones. No sube
+  // planos ni toca pedidos.
   Asesor: [
-    "clients.view", "clients.create", "clients.edit", "clients.assign",
-    "clients.list_price", "clients.import", "clients.createcontact",
-    "clients.editcontact", "clients.deletecontact",
-    "opportunities.view", "opportunities.create", "opportunities.edit",
-    "quotes.view", "quotes.create", "quotes.edit", "quotes.send",
-    "quotes.pdf", "quotes.sign",
-    "orders.view", "backlog_design.view", "special_designs.view",
+    ...BASE_GRANTS,
+    "clients.create", "clients.edit", "clients.assign", "clients.list_price",
+    "clients.import", "clients.createcontact", "clients.editcontact",
+    "clients.deletecontact",
+    "opportunities.create", "opportunities.edit",
+    "quotes.create", "quotes.edit", "quotes.send", "quotes.sign",
     "reports.calendar",
   ],
-  Diseñador: [
-    "backlog_design.view", "backlog_design.create", "backlog_design.edit",
-    "backlog_design.assign_designer", "backlog_design.approved_files",
-    "backlog_design.approved_final",
-    "special_designs.view", "special_designs.create", "special_designs.edit",
-    "quotes.view", "orders.view",
-  ],
-  "Diseñador Comercial": [
-    "quotes.view", "quotes.edit", "backlog_design.view",
-    "special_designs.view", "special_designs.create",
-  ],
-  "Analista de Cartera": [
-    "clients.view", "orders.view", "reports.bi_orders",
-  ],
+  Diseñador: DESIGN_GRANTS,
+  "Diseñador Comercial": DESIGN_GRANTS,
+  // Cartera: consulta todo + BI de pedidos (facturación/cartera).
+  "Analista de Cartera": [...BASE_GRANTS, "reports.bi_orders"],
+  // Pedidos: gestiona el ciclo del pedido. No edita cotizaciones ni diseño.
   "Analista de Pedido": [
-    "orders.view", "orders.edit", "orders.approve_ingreso",
-    "orders.approve_fabricacion", "orders.send_ofimatica", "reports.bi_orders",
+    ...BASE_GRANTS,
+    "orders.edit", "orders.approve_ingreso", "orders.approve_fabricacion",
+    "orders.send_ofimatica",
+    "reports.bi_orders",
   ],
-  "Jefe de compra": [
-    "orders.view", "reports.bi_orders", "parameters.view",
-  ],
+  "Jefe de compra": [...BASE_GRANTS, "reports.bi_orders", "parameters.view"],
+  // Consultor: solo Pedidos · Backlog Diseño · Biblioteca Especiales (según
+  // el CRM original). Su flujo: SOLICITA a diseño el despiece de una
+  // referencia (backlog_design.create); diseño lo realiza, lo sube y le
+  // notifica para que lo consulte y descargue.
   Consultor: [
-    "clients.view", "opportunities.view", "quotes.view", "orders.view",
-    "reports.bi_quotes", "reports.bi_orders", "reports.bi_tracking",
+    "orders.view",
+    "backlog_design.view", "backlog_design.create",
+    "special_designs.view",
   ],
 };
 
@@ -166,6 +189,16 @@ async function main() {
         create: { roleId: role.id, permissionId: perm.id, active: true },
       });
     }
+
+    // Revoca lo que ya no esté en GRANTS (el seed es la fuente de verdad
+    // mientras pulimos los roles uno a uno).
+    const grantedIds = keys
+      .map((key) => permByKey.get(key)?.id)
+      .filter((pid): pid is string => Boolean(pid));
+    await db.rolePermission.updateMany({
+      where: { roleId: role.id, permissionId: { notIn: grantedIds }, active: true },
+      data: { active: false },
+    });
   }
 
   // Usuarios de ejemplo (anonimizados)
@@ -186,6 +219,7 @@ async function main() {
     { name: "Administrador Sistemas", email: "sistemas@jepmobiliari.com", role: "Administrador", cargo: "Administrador" },
     { name: "Asesora Demo", email: "asesor.demo@jepmobiliari.com", role: "Asesor", cargo: "Asesor de proyectos" },
     { name: "Diseñador Demo", email: "disenador.demo@jepmobiliari.com", role: "Diseñador", cargo: "Diseñador" },
+    { name: "Diseñadora Comercial Demo", email: "dcomercial.demo@jepmobiliari.com", role: "Diseñador Comercial", cargo: "Diseñadora Comercial" },
     { name: "Asesor Demo 2", email: "asesor2.demo@jepmobiliari.com", role: "Asesor", cargo: "Asesor de proyectos" },
     { name: "Asesor Demo 3", email: "asesor3.demo@jepmobiliari.com", role: "Asesor", cargo: "Asesor de proyectos" },
     { name: "Consultor Demo", email: "consultor.demo@jepmobiliari.com", role: "Consultor", cargo: "Consultor", status: "INACTIVE" },

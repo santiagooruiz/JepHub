@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { listDesignRequests } from "@/features/design/queries";
 import { BacklogTable } from "@/features/design/backlog-table";
+import { BacklogDetailDrawer } from "@/features/design/backlog-detail-drawer";
 import { BACKLOG_ESTADOS } from "@/features/design/types";
 
 export const dynamic = "force-dynamic";
@@ -44,13 +45,21 @@ function FilterCard({
 export default async function BacklogPage({
   searchParams,
 }: {
-  searchParams: Promise<{ estado?: string }>;
+  searchParams: Promise<{ estado?: string; producto?: string; tab?: string }>;
 }) {
   const user = await requirePermission("view", "backlog_design");
   const canCreate = user.ability.can("create", "backlog_design");
+  const canEdit = user.ability.can("edit", "backlog_design");
   const sp = await searchParams;
   const estadoFilter =
     sp.estado && BACKLOG_ESTADOS.includes(sp.estado) ? sp.estado : null;
+
+  // El 👁️ abre un panel lateral sobre el listado (?producto=…), preservando
+  // el filtro de estado activo.
+  const baseHref = estadoFilter
+    ? `/backlog?estado=${encodeURIComponent(estadoFilter)}`
+    : "/backlog";
+  const detailHrefBase = `${baseHref}${estadoFilter ? "&" : "?"}producto=`;
 
   const all = await listDesignRequests(user.companyId);
   const counts = BACKLOG_ESTADOS.map((e) => ({
@@ -103,7 +112,18 @@ export default async function BacklogPage({
         ))}
       </div>
 
-      <BacklogTable data={rows} />
+      <BacklogTable data={rows} detailHrefBase={detailHrefBase} />
+
+      {sp.producto && (
+        <BacklogDetailDrawer
+          companyId={user.companyId}
+          id={sp.producto}
+          closeHref={baseHref}
+          selfHref={`${detailHrefBase}${sp.producto}`}
+          tab={sp.tab}
+          canEdit={canEdit}
+        />
+      )}
     </div>
   );
 }

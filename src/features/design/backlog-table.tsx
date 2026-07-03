@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import Link from "next/link";
 import { type ColumnDef } from "@tanstack/react-table";
 import { Eye, Check, Minus, ImageIcon } from "lucide-react";
@@ -16,22 +17,91 @@ function Deliverable({ done }: { done: boolean }) {
   );
 }
 
-export function BacklogTable({ data }: { data: BacklogRow[] }) {
+/**
+ * Descripción con secciones PR-DI-01 y "Leer más" expandible, como el CRM
+ * original: colapsada muestra solo DATOS DE ENTRADA (2 líneas).
+ */
+function DescripcionCell({ row }: { row: BacklogRow }) {
+  const [open, setOpen] = React.useState(false);
+  const secciones = [
+    { label: "DATOS DE ENTRADA", text: row.datosEntrada },
+    { label: "REQUISITOS TÉCNICOS", text: row.requisitosTecnicos },
+  ].filter((s) => s.text);
+
+  if (!secciones.length) {
+    return (
+      <span className="line-clamp-2 max-w-xs text-muted-foreground">
+        {row.descripcion || "—"}
+      </span>
+    );
+  }
+
+  const visibles = open ? secciones : secciones.slice(0, 1);
+  const expandible = secciones.length > 1 || secciones[0].text.length > 90;
+
+  return (
+    <div className="max-w-xs space-y-1.5">
+      {visibles.map((s) => (
+        <div key={s.label}>
+          <p className="text-xs font-semibold">{s.label}:</p>
+          <p
+            className={
+              open
+                ? "whitespace-pre-wrap text-muted-foreground"
+                : "line-clamp-2 text-muted-foreground"
+            }
+          >
+            {s.text}
+          </p>
+        </div>
+      ))}
+      {expandible && (
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="text-xs font-medium text-primary hover:underline"
+        >
+          {open ? "Leer menos" : "Leer más"}
+        </button>
+      )}
+    </div>
+  );
+}
+
+export function BacklogTable({
+  data,
+  detailHrefBase,
+}: {
+  data: BacklogRow[];
+  /** Prefijo del enlace del 👁️ (drawer de detalle); se le concatena el id. */
+  detailHrefBase: string;
+}) {
   const columns: ColumnDef<BacklogRow>[] = [
     {
       accessorKey: "tipo",
       header: "Tipo",
-      cell: ({ row }) =>
-        row.original.quoteId ? (
-          <Link
-            href={`/cotizaciones/${row.original.quoteId}`}
-            className="text-primary hover:underline"
-          >
-            {row.original.tipo}
-          </Link>
+      cell: ({ row }) => {
+        const { quoteId, orderId, tipo, origenEstado } = row.original;
+        const href = orderId
+          ? `/pedidos/${orderId}`
+          : quoteId
+            ? `/cotizaciones/${quoteId}`
+            : null;
+        return href ? (
+          <div className="min-w-28">
+            <Link href={href} className="text-primary hover:underline">
+              {tipo}
+            </Link>
+            {origenEstado && (
+              <span className="block text-xs font-medium uppercase text-muted-foreground">
+                {origenEstado}
+              </span>
+            )}
+          </div>
         ) : (
           <Badge variant="secondary">INTERNO</Badge>
-        ),
+        );
+      },
     },
     {
       id: "imagen",
@@ -68,13 +138,12 @@ export function BacklogTable({ data }: { data: BacklogRow[] }) {
       ),
     },
     {
-      accessorKey: "descripcion",
+      id: "descripcion",
+      // Incluye las secciones PR-DI-01 para que la búsqueda global las cubra.
+      accessorFn: (r) =>
+        [r.descripcion, r.datosEntrada, r.requisitosTecnicos].join(" "),
       header: "Descripción",
-      cell: ({ row }) => (
-        <span className="line-clamp-2 max-w-xs text-muted-foreground">
-          {row.original.descripcion || "—"}
-        </span>
-      ),
+      cell: ({ row }) => <DescripcionCell row={row.original} />,
     },
     {
       accessorKey: "nPedidoOfimatica",
@@ -122,9 +191,10 @@ export function BacklogTable({ data }: { data: BacklogRow[] }) {
       cell: ({ row }) => (
         <div className="flex justify-end">
           <Link
-            href={`/backlog/${row.original.id}`}
-            className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent"
-            aria-label="Ver"
+            href={`${detailHrefBase}${row.original.id}`}
+            scroll={false}
+            className="inline-flex size-8 items-center justify-center rounded-md bg-primary/10 text-primary hover:bg-primary/20"
+            aria-label="Ver detalle"
           >
             <Eye className="size-4" />
           </Link>
