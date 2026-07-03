@@ -313,6 +313,13 @@ model Attachment {
   bucket        String     @default("archivos")
   observaciones String?
   url           String
+  // Aprobación del archivo (p.ej. ficha técnica en el Backlog Diseño)
+  estado          String?   // APROBADA | RECHAZADA
+  aprobadoPor     String?
+  fechaAprobacion DateTime?
+  firma           String?   // imagen de la firma (URL / data URI)
+  // Borrado suave: el archivo sigue visible como [BORRADA] en el historial
+  deletedAt     DateTime?
   createdAt     DateTime   @default(now())
 
   @@index([entityType, clientId])

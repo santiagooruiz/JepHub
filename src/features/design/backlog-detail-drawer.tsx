@@ -94,7 +94,10 @@ export async function BacklogDetailDrawer({
           <Dato label="Asesor" value={asesor} />
           <Dato label="Diseñador" value={dr.designer?.name ?? ""} />
           <Dato label="Fecha de creación" value={dateTime(dr.createdAt)} />
-          <Dato label="N° pedido (Ofimática)" value={dr.nPedidoOfimatica ?? ""} />
+          <Dato
+            label="N° pedido (Ofimática)"
+            value={dr.nPedidoOfimatica ?? dr.order?.erpSync?.nPedidoOfimatica ?? ""}
+          />
           <Dato
             label="Precio estimado venta Público"
             value={
@@ -147,7 +150,7 @@ export async function BacklogDetailDrawer({
     },
     {
       id: "archivos",
-      label: `Archivos (${dr.files.length})`,
+      label: `Archivos (${dr.files.filter((f) => !f.deletedAt).length})`,
       content: (
         <DesignFilesPanel
           designRequestId={dr.id}
@@ -158,6 +161,11 @@ export async function BacklogDetailDrawer({
             observaciones: f.observaciones,
             url: f.url,
             createdAt: dateTime(f.createdAt),
+            estado: f.estado,
+            aprobadoPor: f.aprobadoPor,
+            fechaAprobacion: f.fechaAprobacion ? dateTime(f.fechaAprobacion) : null,
+            firma: f.firma,
+            borrado: !!f.deletedAt,
           }))}
         />
       ),

@@ -459,22 +459,79 @@ export async function saveDesignFile(input: unknown): Promise<ActionResult> {
   return { ok: true };
 }
 
+/**
+ * Borrado suave: el archivo queda visible como [BORRADA] para trazabilidad,
+ * como en el CRM original. Si era el entregable vigente, desmarca el ✓.
+ */
 export async function deleteDesignFile(id: string): Promise<ActionResult> {
   const user = await requirePermission("edit", "backlog_design");
   const file = await db.attachment.findFirst({
-    where: { id, companyId: user.companyId, entityType: "DESIGN" },
+    where: { id, companyId: user.companyId, entityType: "DESIGN", deletedAt: null },
     select: { id: true, url: true, tipoArchivo: true, designRequestId: true },
   });
   if (!file) return { ok: false, error: "No encontrado." };
 
-  await db.attachment.delete({ where: { id: file.id } });
+  await db.attachment.update({
+    where: { id: file.id },
+    data: { deletedAt: new Date() },
+  });
+
   if (file.designRequestId) {
+    const field =
+      DELIVERABLE_BY_CATEGORY[file.tipoArchivo as keyof typeof DELIVERABLE_BY_CATEGORY];
+    if (field) {
+      // Desmarca el entregable solo si apuntaba a este archivo.
+      await db.designRequest.updateMany({
+        where: {
+          id: file.designRequestId,
+          companyId: user.companyId,
+          [field]: file.url,
+        },
+        data: { [field]: null },
+      });
+    }
     await logDesignActivity(
       user.companyId,
       user.id,
       "DESIGN",
       file.designRequestId,
       `Eliminó el archivo ${file.url}${file.tipoArchivo ? ` de tipo ${file.tipoArchivo}` : ""}`
+    );
+    revalidatePath(`/backlog/${file.designRequestId}`);
+  }
+  revalidatePath("/backlog");
+  return { ok: true };
+}
+
+/**
+ * Aprobación/rechazo de un archivo (ficha técnica). Deja constancia de quién
+ * aprobó y cuándo; la firma manuscrita llegará con el flujo de e-firma.
+ */
+export async function setDesignFileEstado(
+  id: string,
+  estado: "APROBADA" | "RECHAZADA"
+): Promise<ActionResult> {
+  const user = await requirePermission("edit", "backlog_design");
+  if (estado !== "APROBADA" && estado !== "RECHAZADA") {
+    return { ok: false, error: "Estado inválido." };
+  }
+  const file = await db.attachment.findFirst({
+    where: { id, companyId: user.companyId, entityType: "DESIGN", deletedAt: null },
+    select: { id: true, url: true, tipoArchivo: true, designRequestId: true },
+  });
+  if (!file) return { ok: false, error: "No encontrado." };
+
+  await db.attachment.update({
+    where: { id: file.id },
+    data: { estado, aprobadoPor: user.name, fechaAprobacion: new Date() },
+  });
+  if (file.designRequestId) {
+    await logDesignActivity(
+      user.companyId,
+      user.id,
+      "DESIGN",
+      file.designRequestId,
+      `${estado === "APROBADA" ? "Aprobó" : "Rechazó"} el archivo ${file.url}${file.tipoArchivo ? ` de tipo ${file.tipoArchivo}` : ""}`
     );
     revalidatePath(`/backlog/${file.designRequestId}`);
   }

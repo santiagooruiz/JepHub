@@ -93,9 +93,10 @@ export type BacklogRow = {
   nPedidoOfimatica: string;
   disenador: string;
   estado: string;
-  despiece: boolean;
-  armadoGeneral: boolean;
-  planosTecnicos: boolean;
+  // Entregables: URL/nombre del archivo, o "" si no existe aún
+  despiece: string;
+  armadoGeneral: string;
+  planosTecnicos: string;
 };
 
 export type SpecialCard = {

@@ -45,6 +45,7 @@ export async function listDesignRequests(companyId: string): Promise<BacklogRow[
           estado: true,
           client: clientSelect,
           advisor: { select: { name: true } },
+          erpSync: { select: { nPedidoOfimatica: true } },
         },
       },
       designer: { select: { name: true } },
@@ -74,12 +75,13 @@ export async function listDesignRequests(companyId: string): Promise<BacklogRow[
     descripcion: r.descripcion ?? "",
     datosEntrada: r.datosEntrada ?? "",
     requisitosTecnicos: r.requisitosTecnicos ?? "",
-    nPedidoOfimatica: r.nPedidoOfimatica ?? "",
+    nPedidoOfimatica:
+      r.nPedidoOfimatica ?? r.order?.erpSync?.nPedidoOfimatica ?? "",
     disenador: r.designer?.name ?? "",
     estado: r.estado,
-    despiece: !!r.despiece,
-    armadoGeneral: !!r.armadoGeneral,
-    planosTecnicos: !!r.planosTecnicos,
+    despiece: r.despiece ?? "",
+    armadoGeneral: r.armadoGeneral ?? "",
+    planosTecnicos: r.planosTecnicos ?? "",
   }));
 }
 
@@ -134,6 +136,7 @@ export async function getDesignRequestDetail(companyId: string, id: string) {
             },
           },
           advisor: { select: { name: true } },
+          erpSync: { select: { nPedidoOfimatica: true } },
         },
       },
       designer: { select: { name: true } },

@@ -3,17 +3,27 @@
 import * as React from "react";
 import Link from "next/link";
 import { type ColumnDef } from "@tanstack/react-table";
-import { Eye, Check, Minus, ImageIcon } from "lucide-react";
+import { Eye, FileText, Minus, ImageIcon } from "lucide-react";
 
 import { DataTable } from "@/components/data-table/data-table";
 import { Badge } from "@/components/ui/badge";
 import { type BacklogRow, backlogEstadoVariant } from "./types";
 
-function Deliverable({ done }: { done: boolean }) {
-  return done ? (
-    <Check className="size-4 text-[hsl(var(--success))]" />
+/** Entregable: chip PDF clicable si hay archivo (como el CRM original). */
+function Deliverable({ url }: { url: string }) {
+  if (!url) return <Minus className="size-4 text-muted-foreground/50" />;
+  const esLink = /^(https?:)?\//.test(url);
+  const chip = (
+    <span className="inline-flex size-7 items-center justify-center rounded bg-[hsl(var(--destructive))]/10">
+      <FileText className="size-4 text-[hsl(var(--destructive))]" />
+    </span>
+  );
+  return esLink ? (
+    <a href={url} target="_blank" rel="noreferrer" title={url} aria-label="Abrir entregable">
+      {chip}
+    </a>
   ) : (
-    <Minus className="size-4 text-muted-foreground/50" />
+    <span title={url}>{chip}</span>
   );
 }
 
@@ -173,17 +183,17 @@ export function BacklogTable({
     {
       id: "despiece",
       header: "Despiece",
-      cell: ({ row }) => <Deliverable done={row.original.despiece} />,
+      cell: ({ row }) => <Deliverable url={row.original.despiece} />,
     },
     {
       id: "armado",
       header: "Armado",
-      cell: ({ row }) => <Deliverable done={row.original.armadoGeneral} />,
+      cell: ({ row }) => <Deliverable url={row.original.armadoGeneral} />,
     },
     {
       id: "planos",
       header: "Planos",
-      cell: ({ row }) => <Deliverable done={row.original.planosTecnicos} />,
+      cell: ({ row }) => <Deliverable url={row.original.planosTecnicos} />,
     },
     {
       id: "acciones",

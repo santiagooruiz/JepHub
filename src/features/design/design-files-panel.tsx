@@ -2,13 +2,16 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Check, ExternalLink, Plus, Trash2, X } from "lucide-react";
+import { Check, ExternalLink, Plus, ThumbsDown, ThumbsUp, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { DESIGN_FILE_CATEGORIES } from "./types";
-import { saveDesignFile, deleteDesignFile } from "./actions";
+import { saveDesignFile, deleteDesignFile, setDesignFileEstado } from "./actions";
+
+/** Categoría cuyo archivo pasa por aprobación (ficha técnica). */
+const CATEGORIA_APROBABLE = "Ficha Técnica / Ficha de ajuste";
 
 export type DesignFileItem = {
   id: string;
@@ -16,6 +19,12 @@ export type DesignFileItem = {
   observaciones: string | null;
   url: string;
   createdAt: string;
+  // Aprobación de ficha técnica y borrado suave
+  estado: string | null; // APROBADA | RECHAZADA
+  aprobadoPor: string | null;
+  fechaAprobacion: string | null;
+  firma: string | null;
+  borrado: boolean;
 };
 
 const fileName = (url: string) => url.split("/").pop() || url;
@@ -65,35 +74,89 @@ export function DesignFilesPanel({
   }
 
   function remove(id: string) {
-    if (!window.confirm("¿Eliminar archivo?")) return;
+    if (!window.confirm("¿Eliminar archivo? Quedará marcado como [BORRADA]."))
+      return;
     start(async () => {
       await deleteDesignFile(id);
       router.refresh();
     });
   }
 
+  function aprobar(id: string, estado: "APROBADA" | "RECHAZADA") {
+    start(async () => {
+      await setDesignFileEstado(id, estado);
+      router.refresh();
+    });
+  }
+
   function FileChip({ f }: { f: DesignFileItem }) {
+    const aprobable =
+      canEdit && !f.borrado && f.tipoArchivo === CATEGORIA_APROBABLE;
     return (
-      <div className="rounded-md border px-3 py-1.5 text-sm">
+      <div className={cn("rounded-md border px-3 py-1.5 text-sm", f.borrado && "opacity-70")}>
         <div className="flex items-center justify-between gap-2">
-          <a
-            href={f.url}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex min-w-0 items-center gap-1 text-primary hover:underline"
-          >
-            <span className="truncate">{fileName(f.url)}</span>
-            <ExternalLink className="size-3.5 shrink-0" />
-          </a>
-          {canEdit && (
-            <button
-              onClick={() => remove(f.id)}
-              disabled={pending}
-              className="inline-flex size-6 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-destructive/10 hover:text-[hsl(var(--destructive))]"
-              aria-label={`Eliminar ${fileName(f.url)}`}
+          <div className="flex min-w-0 flex-wrap items-center gap-x-2">
+            <a
+              href={f.url}
+              target="_blank"
+              rel="noreferrer"
+              className={cn(
+                "inline-flex min-w-0 items-center gap-1 text-primary hover:underline",
+                f.borrado && "line-through"
+              )}
             >
-              <X className="size-3.5" />
-            </button>
+              <span className="truncate">{fileName(f.url)}</span>
+              <ExternalLink className="size-3.5 shrink-0" />
+            </a>
+            {f.borrado && (
+              <span className="text-xs font-semibold text-muted-foreground">[BORRADA]</span>
+            )}
+            {!f.borrado && f.estado === "RECHAZADA" && (
+              <span className="text-xs font-semibold text-[hsl(var(--destructive))]">
+                [RECHAZADA]
+              </span>
+            )}
+            {!f.borrado && f.estado === "APROBADA" && (
+              <span className="text-xs font-semibold text-[hsl(var(--success))]">
+                [APROBADA]
+              </span>
+            )}
+          </div>
+          {!f.borrado && (
+            <div className="flex shrink-0 items-center gap-0.5">
+              {aprobable && f.estado !== "APROBADA" && (
+                <button
+                  onClick={() => aprobar(f.id, "APROBADA")}
+                  disabled={pending}
+                  className="inline-flex size-6 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-[hsl(var(--success))]"
+                  aria-label="Aprobar ficha técnica"
+                  title="Aprobar"
+                >
+                  <ThumbsUp className="size-3.5" />
+                </button>
+              )}
+              {aprobable && f.estado !== "RECHAZADA" && (
+                <button
+                  onClick={() => aprobar(f.id, "RECHAZADA")}
+                  disabled={pending}
+                  className="inline-flex size-6 items-center justify-center rounded-full text-muted-foreground hover:bg-destructive/10 hover:text-[hsl(var(--destructive))]"
+                  aria-label="Rechazar ficha técnica"
+                  title="Rechazar"
+                >
+                  <ThumbsDown className="size-3.5" />
+                </button>
+              )}
+              {canEdit && (
+                <button
+                  onClick={() => remove(f.id)}
+                  disabled={pending}
+                  className="inline-flex size-6 items-center justify-center rounded-full text-muted-foreground hover:bg-destructive/10 hover:text-[hsl(var(--destructive))]"
+                  aria-label={`Eliminar ${fileName(f.url)}`}
+                >
+                  <X className="size-3.5" />
+                </button>
+              )}
+            </div>
           )}
         </div>
         {f.observaciones && (
@@ -101,6 +164,29 @@ export function DesignFilesPanel({
             <span className="font-semibold text-foreground">Observaciones:</span>{" "}
             {f.observaciones}
           </p>
+        )}
+        {f.aprobadoPor && !f.borrado && (
+          <div className="mt-2 space-y-0.5 border-t pt-2 text-xs">
+            <p>
+              <span className="font-semibold">
+                {f.estado === "RECHAZADA" ? "Rechazado por:" : "Aprobado por:"}
+              </span>{" "}
+              {f.aprobadoPor}
+            </p>
+            {f.fechaAprobacion && (
+              <p>
+                <span className="font-semibold">Fecha de aprobación:</span>{" "}
+                {f.fechaAprobacion}
+              </p>
+            )}
+            {f.firma && (
+              <p className="flex items-center gap-2">
+                <span className="font-semibold">Firma:</span>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={f.firma} alt="Firma" className="h-10 object-contain" />
+              </p>
+            )}
+          </div>
         )}
       </div>
     );
@@ -115,7 +201,7 @@ export function DesignFilesPanel({
     items: DesignFileItem[];
     addable?: boolean;
   }) {
-    const done = items.length > 0;
+    const done = items.some((f) => !f.borrado);
     const abierto = adding === nombre;
     return (
       <div className="space-y-2 border-b pb-3 last:border-0">
