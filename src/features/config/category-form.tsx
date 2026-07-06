@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,11 +32,13 @@ export function CategoryForm({
     start(async () => {
       const res = await saveCategory({ id: editing?.id, entity, name });
       if (res.ok) {
+        toast.success(editing ? "Categoría modificada" : "Categoría registrada");
         setName("");
         router.push("/configuracion/categorias");
         router.refresh();
       } else {
         setError(res.error);
+        toast.error(res.error);
       }
     });
   }

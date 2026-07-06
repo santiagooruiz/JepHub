@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 
 import { cn } from "@/lib/utils";
 import { setRolePermission } from "./actions";
@@ -27,7 +28,12 @@ export function PermissionToggle({
       onClick={() =>
         start(async () => {
           const res = await setRolePermission(roleId, permissionId, !active);
-          if (res.ok) router.refresh();
+          if (res.ok) {
+            toast.success(active ? "Permiso desactivado" : "Permiso activado");
+            router.refresh();
+          } else {
+            toast.error(res.error);
+          }
         })
       }
       className={cn(

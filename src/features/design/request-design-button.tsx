@@ -4,6 +4,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { PencilRuler } from "lucide-react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { requestDesign, requestFichaTecnica } from "./actions";
@@ -39,8 +40,13 @@ export function RequestDesignButton({
           start(async () => {
             setError(null);
             const res = await requestDesign(quoteId);
-            if (res.ok) router.push(`/backlog/${res.id}`);
-            else setError(res.error);
+            if (res.ok) {
+              toast.success("Solicitud de diseño creada");
+              router.push(`/backlog/${res.id}`);
+            } else {
+              setError(res.error);
+              toast.error(res.error);
+            }
           })
         }
       >
@@ -83,8 +89,13 @@ export function RequestFichaTecnicaButton({
           start(async () => {
             setError(null);
             const res = await requestFichaTecnica(orderId);
-            if (res.ok) router.push(`/backlog?producto=${res.id}`);
-            else setError(res.error);
+            if (res.ok) {
+              toast.success("Ficha técnica solicitada");
+              router.push(`/backlog?producto=${res.id}`);
+            } else {
+              setError(res.error);
+              toast.error(res.error);
+            }
           })
         }
       >

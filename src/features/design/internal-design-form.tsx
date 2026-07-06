@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -41,8 +42,13 @@ export function InternalDesignForm() {
     setError(null);
     start(async () => {
       const res = await createInternalDesign(f);
-      if (res.ok) router.push(`/backlog/${res.id}`);
-      else setError(res.error);
+      if (res.ok) {
+        toast.success("Diseño interno registrado");
+        router.push(`/backlog/${res.id}`);
+      } else {
+        setError(res.error);
+        toast.error(res.error);
+      }
     });
   }
 

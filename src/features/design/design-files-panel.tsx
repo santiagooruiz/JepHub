@@ -3,6 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Check, ExternalLink, Plus, ThumbsDown, ThumbsUp, X } from "lucide-react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -71,12 +72,14 @@ export function DesignFilesPanel({
         url,
       });
       if (res.ok) {
+        toast.success("Archivo registrado");
         setUrl("");
         setObs("");
         setAdding(null);
         router.refresh();
       } else {
         setError(res.error);
+        toast.error(res.error);
       }
     });
   }
@@ -85,14 +88,21 @@ export function DesignFilesPanel({
     if (!window.confirm("¿Eliminar archivo? Quedará marcado como [BORRADA]."))
       return;
     start(async () => {
-      await deleteDesignFile(id);
+      const res = await deleteDesignFile(id);
+      if (res.ok) toast.success("Archivo eliminado");
+      else toast.error(res.error);
       router.refresh();
     });
   }
 
   function aprobar(id: string, estado: "APROBADA" | "RECHAZADA") {
     start(async () => {
-      await setDesignFileEstado(id, estado);
+      const res = await setDesignFileEstado(id, estado);
+      if (res.ok)
+        toast.success(
+          estado === "APROBADA" ? "Archivo aprobado" : "Archivo rechazado"
+        );
+      else toast.error(res.error);
       router.refresh();
     });
   }

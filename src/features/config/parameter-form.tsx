@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,10 +30,12 @@ export function ParameterForm({
     start(async () => {
       const res = await saveParameter({ id: editing?.id, key, value });
       if (res.ok) {
+        toast.success(editing ? "Parámetro modificado" : "Parámetro registrado");
         router.push("/configuracion/parametros");
         router.refresh();
       } else {
         setError(res.error);
+        toast.error(res.error);
       }
     });
   }

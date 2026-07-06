@@ -3,6 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -160,10 +161,14 @@ export function QuoteBuilder({
         })),
       });
       if (res.ok) {
+        toast.success(
+          editing ? "Cotización modificada" : "Cotización registrada"
+        );
         router.push(`/cotizaciones/${res.id}`);
         router.refresh();
       } else {
         setError(res.error);
+        toast.error(res.error);
       }
     });
   }

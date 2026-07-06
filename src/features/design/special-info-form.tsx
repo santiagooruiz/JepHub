@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -61,7 +62,12 @@ export function SpecialInfoForm({
         cantRequerida: f.cantRequerida === "" ? null : f.cantRequerida,
       });
       setMsg(res.ok ? "Guardado" : res.error);
-      if (res.ok) router.refresh();
+      if (res.ok) {
+        toast.success("Ficha guardada");
+        router.refresh();
+      } else {
+        toast.error(res.error);
+      }
     });
   }
 

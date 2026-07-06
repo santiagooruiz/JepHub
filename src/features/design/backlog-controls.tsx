@@ -4,6 +4,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Library } from "lucide-react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,7 +32,9 @@ export function DesignStateSelect({ id, estado }: { id: string; estado: string }
       onChange={(e) => {
         const v = e.target.value;
         start(async () => {
-          await updateDesignState(id, v);
+          const res = await updateDesignState(id, v);
+          if (res.ok) toast.success(`Estado actualizado a ${v}`);
+          else toast.error(res.error);
           router.refresh();
         });
       }}
@@ -64,7 +67,9 @@ export function AssignDesigner({
       onChange={(e) => {
         const v = e.target.value;
         start(async () => {
-          await assignDesigner(id, v);
+          const res = await assignDesigner(id, v);
+          if (res.ok) toast.success("Diseñador asignado");
+          else toast.error(res.error);
           router.refresh();
         });
       }}
@@ -104,7 +109,12 @@ export function EntregablesForm({ id, values }: { id: string; values: Entregable
     start(async () => {
       const res = await updateEntregables({ id, ...f });
       setMsg(res.ok ? "Guardado" : res.error);
-      if (res.ok) router.refresh();
+      if (res.ok) {
+        toast.success("Entregables guardados");
+        router.refresh();
+      } else {
+        toast.error(res.error);
+      }
     });
   }
 
@@ -172,7 +182,12 @@ export function PlanningForm({
     start(async () => {
       const res = await updateDesignPlanning({ id, ...f });
       setMsg(res.ok ? "Guardado" : res.error);
-      if (res.ok) router.refresh();
+      if (res.ok) {
+        toast.success("Planificación guardada");
+        router.refresh();
+      } else {
+        toast.error(res.error);
+      }
     });
   }
 
@@ -234,8 +249,13 @@ export function ConvertToSpecialButton({
           start(async () => {
             setError(null);
             const res = await convertToSpecial(id);
-            if (res.ok) router.push(`/especiales/${res.id}`);
-            else setError(res.error);
+            if (res.ok) {
+              toast.success("Convertido a Especial");
+              router.push(`/especiales/${res.id}`);
+            } else {
+              setError(res.error);
+              toast.error(res.error);
+            }
           })
         }
       >

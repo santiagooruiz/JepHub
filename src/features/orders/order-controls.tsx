@@ -3,6 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Check, Send, RefreshCw } from "lucide-react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -24,7 +25,9 @@ export function OrderStateSelect({ id, estado }: { id: string; estado: string })
       onChange={(e) => {
         const v = e.target.value;
         start(async () => {
-          await updateOrderState(id, v);
+          const res = await updateOrderState(id, v);
+          if (res.ok) toast.success(`Pedido actualizado a ${v}`);
+          else toast.error(res.error);
           router.refresh();
         });
       }}
@@ -57,9 +60,11 @@ export function ApprovalsPanel({
   const [pending, start] = React.useTransition();
   const byKind = new Map(approvals.map((a) => [a.kind, a]));
 
-  function approve(kind: string) {
+  function approve(kind: (typeof APPROVAL_KINDS)[number]) {
     start(async () => {
-      await approveOrderStep(orderId, kind);
+      const res = await approveOrderStep(orderId, kind);
+      if (res.ok) toast.success(`${APPROVAL_LABELS[kind]} aprobado`);
+      else toast.error(res.error);
       router.refresh();
     });
   }
@@ -128,7 +133,12 @@ export function OfimaticaPanel({ orderId, erp }: { orderId: string; erp: ErpStat
     start(async () => {
       setError(null);
       const res = await sendToOfimatica(orderId);
-      if (!res.ok) setError(res.error);
+      if (res.ok) {
+        toast.success("Pedido encolado para envío a ofimática");
+      } else {
+        setError(res.error);
+        toast.error(res.error);
+      }
       router.refresh();
     });
 
@@ -196,8 +206,13 @@ export function GenerateOrderButton({ quoteId }: { quoteId: string }) {
           start(async () => {
             setError(null);
             const res = await generateOrderFromQuote(quoteId);
-            if (res.ok) router.push(`/pedidos/${res.id}`);
-            else setError(res.error);
+            if (res.ok) {
+              toast.success("Pedido generado");
+              router.push(`/pedidos/${res.id}`);
+            } else {
+              setError(res.error);
+              toast.error(res.error);
+            }
           })
         }
       >

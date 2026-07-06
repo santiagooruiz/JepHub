@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,7 +39,12 @@ export function DesignPrecioForm({
         cantRequerida: f.cantRequerida.trim() || null,
       });
       setMsg(res.ok ? "Guardado" : res.error);
-      if (res.ok) router.refresh();
+      if (res.ok) {
+        toast.success("Precio comercial guardado");
+        router.refresh();
+      } else {
+        toast.error(res.error);
+      }
     });
   }
 

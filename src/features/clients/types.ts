@@ -12,6 +12,9 @@ export type ClientRow = {
   estado: string;
   ultimaInteraccion: string;
   dias: number | null;
+  accion: string;
+  canal: string;
+  fechaRegistro: string;
 };
 
 export function estadoVariant(estado: string): BadgeProps["variant"] {

@@ -7,9 +7,17 @@ import { OpportunityForm } from "@/features/opportunities/opportunity-form";
 
 export const dynamic = "force-dynamic";
 
-export default async function NuevaOportunidadPage() {
+export default async function NuevaOportunidadPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ clienteId?: string }>;
+}) {
   const user = await requirePermission("create", "opportunities");
   const options = await getOpportunityOptions(user.companyId);
+  const { clienteId } = await searchParams;
+  const defaultClientId = options.clients.some((c) => c.id === clienteId)
+    ? clienteId
+    : undefined;
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -22,7 +30,7 @@ export default async function NuevaOportunidadPage() {
       <h1 className="mb-6 text-2xl font-semibold tracking-tight">
         Nueva oportunidad
       </h1>
-      <OpportunityForm options={options} />
+      <OpportunityForm options={options} defaultClientId={defaultClientId} />
     </div>
   );
 }

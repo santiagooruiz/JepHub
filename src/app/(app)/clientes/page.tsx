@@ -4,7 +4,6 @@ import { UserPlus } from "lucide-react";
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/guard";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { ClientsTable } from "@/features/clients/clients-table";
 import { clientDisplayName } from "@/features/clients/queries";
 import type { ClientRow } from "@/features/clients/types";
@@ -19,7 +18,14 @@ export default async function ClientesPage() {
 
   const clients = await db.client.findMany({
     where: { companyId: user.companyId, deletedAt: null },
-    include: { advisor: { select: { name: true } } },
+    include: {
+      advisor: { select: { name: true } },
+      activities: {
+        orderBy: { fechaHora: "desc" },
+        take: 1,
+        select: { accion: true },
+      },
+    },
     orderBy: { numero: "desc" },
   });
 
@@ -42,18 +48,11 @@ export default async function ClientesPage() {
         ? c.ultimaInteraccion.toLocaleDateString("es-CO")
         : "",
       dias,
+      accion: c.activities[0]?.accion ?? "",
+      canal: c.canal ?? "",
+      fechaRegistro: c.createdAt.toLocaleDateString("es-CO"),
     };
   });
-
-  const count = (estado: string) =>
-    clients.filter((c) => c.estado === estado).length;
-  const kpis = [
-    { label: "Prospectos", value: count("Prospecto") },
-    { label: "Gestión Cotización", value: count("Gestión Cotización") },
-    { label: "Clientes", value: count("Cliente") },
-    { label: "Perdidas", value: count("Gestión Perdida") },
-    { label: "Total", value: clients.length },
-  ];
 
   return (
     <div>
@@ -66,18 +65,6 @@ export default async function ClientesPage() {
             </Link>
           </Button>
         )}
-      </div>
-
-      <div
-        className="mb-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5"
-        style={{ gap: "var(--card-gap)" }}
-      >
-        {kpis.map((k) => (
-          <Card key={k.label} className="p-3">
-            <p className="truncate text-sm text-muted-foreground">{k.label}</p>
-            <p className="tabular mt-1 text-xl font-bold">{k.value}</p>
-          </Card>
-        ))}
       </div>
 
       <ClientsTable data={rows} canEdit={canEdit} canDelete={canDelete} />

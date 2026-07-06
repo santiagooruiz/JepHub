@@ -3,6 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -46,7 +47,12 @@ export function KanbanBoard({
     setItems((prev) => prev.map((i) => (i.id === id ? { ...i, estado } : i)));
     start(async () => {
       const res = await updateOpportunityStage(id, estado);
-      if (!res.ok) setItems(cards); // revertir
+      if (res.ok) {
+        toast.success(`Oportunidad movida a ${estado}`);
+      } else {
+        setItems(cards); // revertir
+        toast.error(res.error);
+      }
       router.refresh();
     });
   }

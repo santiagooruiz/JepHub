@@ -3,6 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Trash2, Paperclip, ExternalLink } from "lucide-react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,12 +44,14 @@ export function SpecialFilesPanel({
         url,
       });
       if (res.ok) {
+        toast.success("Archivo registrado");
         setTipo("");
         setObs("");
         setUrl("");
         router.refresh();
       } else {
         setError(res.error);
+        toast.error(res.error);
       }
     });
   }
@@ -56,7 +59,9 @@ export function SpecialFilesPanel({
   function remove(id: string) {
     if (!window.confirm("¿Eliminar archivo?")) return;
     start(async () => {
-      await deleteSpecialFile(id);
+      const res = await deleteSpecialFile(id);
+      if (res.ok) toast.success("Archivo eliminado");
+      else toast.error(res.error);
       router.refresh();
     });
   }

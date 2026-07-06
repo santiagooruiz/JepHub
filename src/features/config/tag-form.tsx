@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,11 +28,13 @@ export function TagForm({
     start(async () => {
       const res = await saveTag({ id: editing?.id, name });
       if (res.ok) {
+        toast.success(editing ? "Tag modificado" : "Tag registrado");
         setName("");
         router.push("/configuracion/tags");
         router.refresh();
       } else {
         setError(res.error);
+        toast.error(res.error);
       }
     });
   }

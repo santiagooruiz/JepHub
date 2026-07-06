@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,13 +37,16 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 export function OpportunityForm({
   options,
   editing,
+  defaultClientId,
 }: {
   options: OpportunityOptions;
   editing?: OpportunityEditing;
+  /** Cliente preseleccionado (creación desde la ficha del cliente). */
+  defaultClientId?: string;
 }) {
   const router = useRouter();
   const [f, setF] = React.useState({
-    clientId: editing?.clientId ?? "",
+    clientId: editing?.clientId ?? defaultClientId ?? "",
     nombre: editing?.nombre ?? "",
     contacto: editing?.contacto ?? "",
     advisorId: editing?.advisorId ?? "",
@@ -63,10 +67,14 @@ export function OpportunityForm({
     start(async () => {
       const res = await saveOpportunity({ id: editing?.id, ...f });
       if (res.ok) {
+        toast.success(
+          editing ? "Oportunidad modificada" : "Oportunidad registrada"
+        );
         router.push("/oportunidades");
         router.refresh();
       } else {
         setError(res.error);
+        toast.error(res.error);
       }
     });
   }

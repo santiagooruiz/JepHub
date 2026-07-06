@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -106,10 +107,12 @@ export function ClientForm({
     start(async () => {
       const res = await saveClient({ id: editing?.id, ...f });
       if (res.ok) {
+        toast.success(editing ? "Cliente modificado" : "Cliente registrado");
         router.push("/clientes");
         router.refresh();
       } else {
         setError(res.error);
+        toast.error(res.error);
       }
     });
   }

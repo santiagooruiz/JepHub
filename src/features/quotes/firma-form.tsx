@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,8 +20,13 @@ export function FirmaForm({ token }: { token: string }) {
     setError(null);
     start(async () => {
       const res = await signQuote(token, nombre, email);
-      if (res.ok) router.refresh();
-      else setError(res.error);
+      if (res.ok) {
+        toast.success("Cotización firmada");
+        router.refresh();
+      } else {
+        setError(res.error);
+        toast.error(res.error);
+      }
     });
   }
   function rechazar() {
@@ -28,8 +34,13 @@ export function FirmaForm({ token }: { token: string }) {
     setError(null);
     start(async () => {
       const res = await rejectQuote(token);
-      if (res.ok) router.refresh();
-      else setError(res.error);
+      if (res.ok) {
+        toast.success("Cotización rechazada");
+        router.refresh();
+      } else {
+        setError(res.error);
+        toast.error(res.error);
+      }
     });
   }
 

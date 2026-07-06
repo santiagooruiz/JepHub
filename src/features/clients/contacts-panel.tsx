@@ -3,6 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Pencil, Trash2, Plus } from "lucide-react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -75,18 +76,27 @@ export function ContactsPanel({
         ...form,
       });
       if (res.ok) {
+        toast.success(
+          editingId === "new" ? "Contacto añadido" : "Contacto modificado"
+        );
         close();
         router.refresh();
       } else {
         setError(res.error);
+        toast.error(res.error);
       }
     });
   }
   function remove(id: string) {
     if (!window.confirm("¿Eliminar contacto?")) return;
     start(async () => {
-      await deleteContact(id);
-      router.refresh();
+      const res = await deleteContact(id);
+      if (res.ok) {
+        toast.success("Contacto eliminado");
+        router.refresh();
+      } else {
+        toast.error(res.error);
+      }
     });
   }
 

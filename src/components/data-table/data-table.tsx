@@ -20,12 +20,15 @@ interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[];
   data: TData[];
   searchPlaceholder?: string;
+  /** Controles extra (filtros, export…) junto al buscador. */
+  toolbar?: React.ReactNode;
 }
 
 export function DataTable<TData, TValue>({
   columns,
   data,
   searchPlaceholder = "Buscar…",
+  toolbar,
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = React.useState("");
@@ -57,6 +60,7 @@ export function DataTable<TData, TValue>({
             className="pl-8"
           />
         </div>
+        {toolbar}
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <span>Mostrar</span>
           <select

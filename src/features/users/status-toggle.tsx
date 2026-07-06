@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { setUserStatus } from "./actions";
@@ -31,8 +32,13 @@ export function UserStatusToggle({
               userId,
               activo ? "INACTIVE" : "ACTIVE"
             );
-            if (!res.ok) setError(res.error);
-            else router.refresh();
+            if (res.ok) {
+              toast.success(activo ? "Usuario desactivado" : "Usuario activado");
+              router.refresh();
+            } else {
+              setError(res.error);
+              toast.error(res.error);
+            }
           });
         }}
       >

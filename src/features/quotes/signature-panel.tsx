@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { Copy, Check } from "lucide-react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -28,12 +29,14 @@ export function SignaturePanel({
         try {
           await navigator.clipboard.writeText(res.url);
           setCopied(true);
+          toast.success("Link de firma copiado al portapapeles");
           setTimeout(() => setCopied(false), 2500);
         } catch {
-          /* ignore */
+          toast.success("Link de firma generado");
         }
       } else {
         setError(res.error);
+        toast.error(res.error);
       }
     });
   }

@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { registerActivity } from "./actions";
@@ -37,12 +38,14 @@ export function RegisterActivity({
         observaciones: obs,
       });
       if (res.ok) {
+        toast.success("Actividad registrada");
         setAccion("");
         setFechaHora("");
         setObs("");
         router.refresh();
       } else {
         setError(res.error);
+        toast.error(res.error);
       }
     });
   }

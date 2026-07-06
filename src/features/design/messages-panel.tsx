@@ -3,6 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Send } from "lucide-react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { postSpecialMessage, postDesignMessage } from "./actions";
@@ -43,10 +44,12 @@ export function MessagesPanel({
           ? await postSpecialMessage({ ...target, body })
           : await postDesignMessage({ ...target, body });
       if (res.ok) {
+        toast.success("Mensaje enviado");
         setBody("");
         router.refresh();
       } else {
         setError(res.error);
+        toast.error(res.error);
       }
     });
   }
