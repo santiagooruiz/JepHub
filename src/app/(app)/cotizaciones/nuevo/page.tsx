@@ -7,9 +7,22 @@ import { QuoteBuilder } from "@/features/quotes/quote-builder";
 
 export const dynamic = "force-dynamic";
 
-export default async function NuevaCotizacionPage() {
+export default async function NuevaCotizacionPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ oportunidadId?: string; clienteId?: string }>;
+}) {
   const user = await requirePermission("create", "quotes");
   const options = await getQuoteOptions(user.companyId);
+  const { oportunidadId, clienteId } = await searchParams;
+
+  const opp = options.opportunities.find((o) => o.id === oportunidadId);
+  const defaults = {
+    opportunityId: opp?.id,
+    clientId:
+      opp?.clientId ??
+      options.clients.find((c) => c.id === clienteId)?.id,
+  };
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -22,7 +35,7 @@ export default async function NuevaCotizacionPage() {
       <h1 className="mb-6 text-2xl font-semibold tracking-tight">
         Nueva cotización
       </h1>
-      <QuoteBuilder options={options} />
+      <QuoteBuilder options={options} defaults={defaults} />
     </div>
   );
 }

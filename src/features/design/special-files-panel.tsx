@@ -6,6 +6,7 @@ import { Trash2, Paperclip, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { saveSpecialFile, deleteSpecialFile } from "./actions";
 
@@ -57,13 +58,14 @@ export function SpecialFilesPanel({
   }
 
   function remove(id: string) {
-    if (!window.confirm("¿Eliminar archivo?")) return;
-    start(async () => {
-      const res = await deleteSpecialFile(id);
-      if (res.ok) toast.success("Archivo eliminado");
-      else toast.error(res.error);
-      router.refresh();
-    });
+    confirmDialog("¿Eliminar archivo?", () =>
+      start(async () => {
+        const res = await deleteSpecialFile(id);
+        if (res.ok) toast.success("Archivo eliminado");
+        else toast.error(res.error);
+        router.refresh();
+      })
+    );
   }
 
   return (

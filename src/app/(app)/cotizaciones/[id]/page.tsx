@@ -55,6 +55,11 @@ export default async function CotizacionDetallePage({
   if (!q) notFound();
   const canRequestDesign = user.ability.can("create", "backlog_design");
 
+  // Ítems con acabados pendientes: el asesor debe resolverlos (diseño/planos)
+  const porDefinir = q.items.filter((it) =>
+    it.acabados?.toUpperCase().includes("POR DEFINIR")
+  );
+
   const [activities, param] = await Promise.all([
     db.activity.findMany({
       where: { quoteId: q.id, companyId: user.companyId },
@@ -112,9 +117,29 @@ export default async function CotizacionDetallePage({
         {/* Documento */}
         <Card className="p-4">
           <div className="mb-4 grid grid-cols-1 gap-1 sm:grid-cols-2">
-            <Info label="Cliente" value={clientDisplayName(q.client)} />
+            <div className="text-sm">
+              <span className="text-muted-foreground">Cliente: </span>
+              <Link
+                href={`/clientes/${q.clientId}`}
+                className="font-medium text-primary hover:underline"
+              >
+                {clientDisplayName(q.client)}
+              </Link>
+            </div>
             <Info label="Registrado por" value={q.registeredBy?.name} />
-            <Info label="Oportunidad" value={q.opportunity?.nombre} />
+            {q.opportunity ? (
+              <div className="text-sm">
+                <span className="text-muted-foreground">Oportunidad: </span>
+                <Link
+                  href={`/oportunidades/${q.opportunity.id}`}
+                  className="font-medium text-primary hover:underline"
+                >
+                  N° {q.opportunity.numero} · {q.opportunity.nombre}
+                </Link>
+              </div>
+            ) : (
+              <Info label="Oportunidad" value={null} />
+            )}
             <Info label="Forma de pago" value={q.formaPago} />
             <Info label="Tiempo de entrega" value={q.tiempoEntrega} />
             <Info
@@ -187,6 +212,31 @@ export default async function CotizacionDetallePage({
 
         {/* Firma + Actividad */}
         <div className="space-y-6">
+          {porDefinir.length > 0 && (
+            <Card className="border-l-4 border-l-[hsl(var(--destructive))]">
+              <CardHeader>
+                <CardTitle className="text-base">
+                  Producto por definir acabados
+                </CardTitle>
+              </CardHeader>
+              <div className="space-y-3 px-4 pb-4">
+                {porDefinir.map((it) => (
+                  <div key={it.id} className="text-sm">
+                    <p className="font-medium">{it.descripcion || it.referencia}</p>
+                    {it.referencia && (
+                      <p className="text-muted-foreground">
+                        Código: {it.referencia}
+                      </p>
+                    )}
+                    {it.acabados && (
+                      <p className="text-xs text-muted-foreground">{it.acabados}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
+
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Firma del cliente</CardTitle>

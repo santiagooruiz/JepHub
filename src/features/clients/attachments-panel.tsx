@@ -6,6 +6,7 @@ import { Trash2, Paperclip, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { saveAttachment, deleteAttachment } from "./actions";
 
@@ -54,16 +55,17 @@ export function AttachmentsPanel({
     });
   }
   function remove(id: string) {
-    if (!window.confirm("¿Eliminar adjunto?")) return;
-    start(async () => {
-      const res = await deleteAttachment(id);
-      if (res.ok) {
-        toast.success("Adjunto eliminado");
-        router.refresh();
-      } else {
-        toast.error(res.error);
-      }
-    });
+    confirmDialog("¿Eliminar adjunto?", () =>
+      start(async () => {
+        const res = await deleteAttachment(id);
+        if (res.ok) {
+          toast.success("Adjunto eliminado");
+          router.refresh();
+        } else {
+          toast.error(res.error);
+        }
+      })
+    );
   }
 
   return (

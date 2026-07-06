@@ -14,6 +14,7 @@ import {
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { updateDesignPlanning, updateDesignState, finalApproval } from "./actions";
 
@@ -55,30 +56,33 @@ export function DrawerMenu({
   }
 
   function rechazar() {
-    if (!window.confirm("¿Rechazar este producto? Pasará al estado \"Rechazados\".")) return;
-    start(async () => {
-      const res = await updateDesignState(id, "Rechazados");
-      if (res.ok) toast.success("Producto rechazado");
-      else toast.error(res.error);
-      setOpen(false);
-      router.refresh();
-    });
+    confirmDialog(
+      '¿Rechazar este producto? Pasará al estado "Rechazados".',
+      () =>
+        start(async () => {
+          const res = await updateDesignState(id, "Rechazados");
+          if (res.ok) toast.success("Producto rechazado");
+          else toast.error(res.error);
+          setOpen(false);
+          router.refresh();
+        }),
+      { actionLabel: "Rechazar" }
+    );
   }
 
   function aprobacionFinal() {
-    if (
-      !window.confirm(
-        "¿Realizar la aprobación final? El producto pasará a \"Finalizados\"."
-      )
-    )
-      return;
-    start(async () => {
-      const res = await finalApproval(id);
-      if (res.ok) toast.success("Aprobación final realizada");
-      else toast.error(res.error);
-      setOpen(false);
-      router.refresh();
-    });
+    confirmDialog(
+      '¿Realizar la aprobación final? El producto pasará a "Finalizados".',
+      () =>
+        start(async () => {
+          const res = await finalApproval(id);
+          if (res.ok) toast.success("Aprobación final realizada");
+          else toast.error(res.error);
+          setOpen(false);
+          router.refresh();
+        }),
+      { actionLabel: "Aprobar", destructive: false }
+    );
   }
 
   return (

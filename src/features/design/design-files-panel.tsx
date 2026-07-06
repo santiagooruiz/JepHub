@@ -6,6 +6,7 @@ import { Check, ExternalLink, Plus, ThumbsDown, ThumbsUp, X } from "lucide-react
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { DESIGN_FILE_CATEGORIES } from "./types";
@@ -85,14 +86,14 @@ export function DesignFilesPanel({
   }
 
   function remove(id: string) {
-    if (!window.confirm("¿Eliminar archivo? Quedará marcado como [BORRADA]."))
-      return;
-    start(async () => {
-      const res = await deleteDesignFile(id);
-      if (res.ok) toast.success("Archivo eliminado");
-      else toast.error(res.error);
-      router.refresh();
-    });
+    confirmDialog("¿Eliminar archivo? Quedará marcado como [BORRADA].", () =>
+      start(async () => {
+        const res = await deleteDesignFile(id);
+        if (res.ok) toast.success("Archivo eliminado");
+        else toast.error(res.error);
+        router.refresh();
+      })
+    );
   }
 
   function aprobar(id: string, estado: "APROBADA" | "RECHAZADA") {

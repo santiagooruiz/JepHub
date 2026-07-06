@@ -6,6 +6,7 @@ import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 import type { ActionResult } from "./actions";
 
 export function DeleteButton({
@@ -23,16 +24,17 @@ export function DeleteButton({
   const [pending, start] = React.useTransition();
 
   function onClick() {
-    if (!window.confirm(confirmLabel)) return;
-    start(async () => {
-      const res = await action(id);
-      if (res.ok) {
-        toast.success(successMessage);
-        router.refresh();
-      } else {
-        toast.error(res.error);
-      }
-    });
+    confirmDialog(confirmLabel, () =>
+      start(async () => {
+        const res = await action(id);
+        if (res.ok) {
+          toast.success(successMessage);
+          router.refresh();
+        } else {
+          toast.error(res.error);
+        }
+      })
+    );
   }
 
   return (

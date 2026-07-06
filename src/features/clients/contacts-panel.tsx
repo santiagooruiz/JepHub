@@ -6,6 +6,7 @@ import { Pencil, Trash2, Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { saveContact, deleteContact } from "./actions";
 
@@ -88,16 +89,17 @@ export function ContactsPanel({
     });
   }
   function remove(id: string) {
-    if (!window.confirm("¿Eliminar contacto?")) return;
-    start(async () => {
-      const res = await deleteContact(id);
-      if (res.ok) {
-        toast.success("Contacto eliminado");
-        router.refresh();
-      } else {
-        toast.error(res.error);
-      }
-    });
+    confirmDialog("¿Eliminar contacto?", () =>
+      start(async () => {
+        const res = await deleteContact(id);
+        if (res.ok) {
+          toast.success("Contacto eliminado");
+          router.refresh();
+        } else {
+          toast.error(res.error);
+        }
+      })
+    );
   }
 
   return (

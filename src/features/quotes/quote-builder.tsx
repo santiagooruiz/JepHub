@@ -76,14 +76,17 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 export function QuoteBuilder({
   options,
   editing,
+  defaults,
 }: {
   options: QuoteOptions;
   editing?: QuoteEditing;
+  /** Preselección al crear desde la ficha de oportunidad/cliente. */
+  defaults?: { clientId?: string; opportunityId?: string };
 }) {
   const router = useRouter();
   const [h, setH] = React.useState({
-    clientId: editing?.clientId ?? "",
-    opportunityId: editing?.opportunityId ?? "",
+    clientId: editing?.clientId ?? defaults?.clientId ?? "",
+    opportunityId: editing?.opportunityId ?? defaults?.opportunityId ?? "",
     estado: editing?.estado ?? QUOTE_ESTADOS[0],
     formaPago: editing?.formaPago ?? "",
     tiempoEntrega: editing?.tiempoEntrega ?? "",

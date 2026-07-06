@@ -2,6 +2,7 @@
 
 import { ThemeProvider } from "next-themes";
 
+import { ConfirmDialogHost } from "@/components/ui/confirm-dialog";
 import { Toaster } from "@/components/ui/sonner";
 
 export function Providers({ children }: { children: React.ReactNode }) {
@@ -14,6 +15,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
     >
       {children}
       <Toaster />
+      <ConfirmDialogHost />
     </ThemeProvider>
   );
 }

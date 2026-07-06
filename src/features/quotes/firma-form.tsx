@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { signQuote, rejectQuote } from "./signature-actions";
 
@@ -30,18 +31,23 @@ export function FirmaForm({ token }: { token: string }) {
     });
   }
   function rechazar() {
-    if (!window.confirm("¿Rechazar la cotización?")) return;
-    setError(null);
-    start(async () => {
-      const res = await rejectQuote(token);
-      if (res.ok) {
-        toast.success("Cotización rechazada");
-        router.refresh();
-      } else {
-        setError(res.error);
-        toast.error(res.error);
-      }
-    });
+    confirmDialog(
+      "¿Rechazar la cotización?",
+      () => {
+        setError(null);
+        start(async () => {
+          const res = await rejectQuote(token);
+          if (res.ok) {
+            toast.success("Cotización rechazada");
+            router.refresh();
+          } else {
+            setError(res.error);
+            toast.error(res.error);
+          }
+        });
+      },
+      { actionLabel: "Rechazar" }
+    );
   }
 
   return (
