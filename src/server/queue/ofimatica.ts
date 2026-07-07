@@ -7,7 +7,8 @@ export const OFIMATICA_QUEUE = "ofimatica";
 
 export type SendJob = { type: "send"; orderId: string };
 export type MilestoneJob = { type: "milestone"; orderId: string; hito: Hito };
-export type OfimaticaJob = SendJob | MilestoneJob;
+export type PollJob = { type: "poll" };
+export type OfimaticaJob = SendJob | MilestoneJob | PollJob;
 
 // Singleton de la cola (patrón del PrismaClient para sobrevivir al HMR de dev).
 const globalForQueue = globalThis as unknown as {
@@ -41,5 +42,18 @@ export async function enqueueMilestone(orderId: string, hito: Hito, delayMs: num
     "milestone",
     { type: "milestone", orderId, hito },
     { delay: delayMs }
+  );
+}
+
+/**
+ * Registra (o actualiza) el job repetitivo que consulta los hitos de producción
+ * en la BD del ERP. Se invoca al arrancar el worker cuando hay OFIMATICA_DB_*.
+ */
+export async function ensureMilestonePolling() {
+  const everyMs = Number(process.env.OFIMATICA_POLL_MS || 5 * 60 * 1000);
+  return ofimaticaQueue().upsertJobScheduler(
+    "ofimatica-poll",
+    { every: everyMs },
+    { name: "poll", data: { type: "poll" } }
   );
 }

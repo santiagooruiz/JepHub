@@ -45,11 +45,14 @@ export function OpportunityForm({
   defaultClientId?: string;
 }) {
   const router = useRouter();
+  const advisorOf = (clientId: string) =>
+    options.clients.find((c) => c.id === clientId)?.advisorId ?? "";
   const [f, setF] = React.useState({
     clientId: editing?.clientId ?? defaultClientId ?? "",
     nombre: editing?.nombre ?? "",
     contacto: editing?.contacto ?? "",
-    advisorId: editing?.advisorId ?? "",
+    advisorId:
+      editing?.advisorId ?? (defaultClientId ? advisorOf(defaultClientId) : ""),
     estado: editing?.estado ?? "No Cotizada",
     probabilidad: editing?.probabilidad ?? "UNDEFINED",
     fechaCierreProyectada: editing?.fechaCierreProyectada ?? "",
@@ -87,7 +90,15 @@ export function OpportunityForm({
             <select
               required
               value={f.clientId}
-              onChange={(e) => set("clientId", e.target.value)}
+              onChange={(e) => {
+                const clientId = e.target.value;
+                // Al elegir cliente se trae su asesor asignado (editable después).
+                setF((p) => ({
+                  ...p,
+                  clientId,
+                  advisorId: clientId ? advisorOf(clientId) : p.advisorId,
+                }));
+              }}
               className={selectCls}
             >
               <option value="">Seleccione</option>

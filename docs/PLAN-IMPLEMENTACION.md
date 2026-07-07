@@ -566,7 +566,7 @@ jep-hub/
 - **Commits** conventional (`feat:`, `fix:`, `chore:`, `docs:`) en rama `main`.
 
 ## 7. Riesgos / decisiones abiertas
-- **Integración ofimática**: falta el contrato real (API/DB/archivos) del ERP → definir en S7.
+- **Integración ofimática**: ~~falta el contrato real del ERP~~ **resuelto (2026-07)**: conexión directa a la BD SQL Server (`TRADE`/`MVTRADE`/`TRADEMAS`) — ver `docs/INTEGRACION-OFIMATICA.md`.
 - **BI**: confirmar si Metabase embebido o reconstrucción con charts propios (coste vs control).
 - **Migración de datos** del CRM actual (opcional): si se requiere, planear ETL aparte.
 - **"PT"** en Backlog: confirmar significado exacto del prefijo con el negocio.

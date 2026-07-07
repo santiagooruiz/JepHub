@@ -26,6 +26,15 @@ export function validateEnv() {
     }
   }
 
+  // BD del ERP: o se configura completa o no se configura (mock). A medias, error.
+  const erpVars = ["OFIMATICA_DB_HOST", "OFIMATICA_DB_NAME", "OFIMATICA_DB_USER", "OFIMATICA_DB_PASSWORD"];
+  const erpSet = erpVars.filter((k) => process.env[k]);
+  if (erpSet.length > 0 && erpSet.length < erpVars.length) {
+    errors.push(
+      `Configuración OFIMATICA_DB_* incompleta (faltan: ${erpVars.filter((k) => !process.env[k]).join(", ")}).`
+    );
+  }
+
   if (errors.length) {
     const msg = "Configuración inválida:\n- " + errors.join("\n- ");
     if (isProd) throw new Error(msg);

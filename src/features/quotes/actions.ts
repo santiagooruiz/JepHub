@@ -129,6 +129,63 @@ export async function saveQuote(input: unknown): Promise<SaveResult> {
   return { ok: true, id: quoteId };
 }
 
+/**
+ * Duplica una cotización (encabezado + ítems) como nueva cotización en
+ * "Pendiente cotización", registrada por el usuario actual.
+ */
+export async function duplicateQuote(id: string): Promise<SaveResult> {
+  const user = await requirePermission("create", "quotes");
+
+  const source = await db.quote.findFirst({
+    where: { id, companyId: user.companyId, deletedAt: null },
+    include: { items: true },
+  });
+  if (!source) return { ok: false, error: "Cotización no encontrada." };
+
+  const last = await db.quote.findFirst({
+    where: { companyId: user.companyId },
+    orderBy: { numero: "desc" },
+    select: { numero: true },
+  });
+  const created = await db.quote.create({
+    data: {
+      companyId: user.companyId,
+      numero: (last?.numero ?? 0) + 1,
+      registeredById: user.id,
+      clientId: source.clientId,
+      opportunityId: source.opportunityId,
+      estado: "Pendiente cotización",
+      formaPago: source.formaPago,
+      tiempoEntrega: source.tiempoEntrega,
+      ordenCompra: source.ordenCompra,
+      direccionEnvio: source.direccionEnvio,
+      observacion: source.observacion,
+      fechaVencimiento: source.fechaVencimiento,
+      subtotal: source.subtotal,
+      impuesto: source.impuesto,
+      total: source.total,
+      items: {
+        create: source.items.map((it) => ({
+          productId: it.productId,
+          referencia: it.referencia,
+          descripcion: it.descripcion,
+          acabados: it.acabados,
+          observacionesInternas: it.observacionesInternas,
+          precio: it.precio,
+          cantidad: it.cantidad,
+          descuentoPct: it.descuentoPct,
+          precioConDesc: it.precioConDesc,
+          total: it.total,
+        })),
+      },
+    },
+  });
+
+  revalidatePath("/cotizaciones");
+  if (source.opportunityId) revalidatePath(`/oportunidades/${source.opportunityId}`);
+  return { ok: true, id: created.id };
+}
+
 export async function deleteQuote(id: string): Promise<ActionResult> {
   const user = await requirePermission("delete", "quotes");
   await db.quote.updateMany({

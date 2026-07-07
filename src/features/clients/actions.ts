@@ -144,12 +144,18 @@ export async function deleteContact(id: string): Promise<ActionResult> {
 }
 
 // ─────────────────────────── Adjuntos ───────────────────────────
-const attachmentSchema = z.object({
-  clientId: z.string().min(1),
-  tipoArchivo: nullableStr,
-  observaciones: nullableStr,
-  url: z.string().min(1, "URL o nombre requerido"),
-});
+// Adjuntos de cliente u oportunidad (exactamente uno de los dos ids).
+const attachmentSchema = z
+  .object({
+    clientId: z.string().optional(),
+    opportunityId: z.string().optional(),
+    tipoArchivo: nullableStr,
+    observaciones: nullableStr,
+    url: z.string().min(1, "URL o nombre requerido"),
+  })
+  .refine((d) => Boolean(d.clientId) !== Boolean(d.opportunityId), {
+    message: "Entidad requerida",
+  });
 
 export async function saveAttachment(input: unknown): Promise<ActionResult> {
   const user = await requireUser();
@@ -157,35 +163,46 @@ export async function saveAttachment(input: unknown): Promise<ActionResult> {
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Datos inválidos" };
   }
-  const { clientId, tipoArchivo, observaciones, url } = parsed.data;
-  const client = await db.client.findFirst({
-    where: { id: clientId, companyId: user.companyId },
-    select: { id: true },
-  });
-  if (!client) return { ok: false, error: "Cliente no encontrado." };
+  const { clientId, opportunityId, tipoArchivo, observaciones, url } = parsed.data;
+
+  if (clientId) {
+    const client = await db.client.findFirst({
+      where: { id: clientId, companyId: user.companyId },
+      select: { id: true },
+    });
+    if (!client) return { ok: false, error: "Cliente no encontrado." };
+  } else {
+    const opp = await db.opportunity.findFirst({
+      where: { id: opportunityId, companyId: user.companyId },
+      select: { id: true },
+    });
+    if (!opp) return { ok: false, error: "Oportunidad no encontrada." };
+  }
 
   await db.attachment.create({
     data: {
       companyId: user.companyId,
-      entityType: "CLIENT",
-      clientId,
+      entityType: clientId ? "CLIENT" : "OPPORTUNITY",
+      clientId: clientId ?? null,
+      opportunityId: opportunityId ?? null,
       tipoArchivo,
       observaciones,
       url,
     },
   });
-  revalidatePath(`/clientes/${clientId}`);
+  revalidatePath(clientId ? `/clientes/${clientId}` : `/oportunidades/${opportunityId}`);
   return { ok: true };
 }
 
 export async function deleteAttachment(id: string): Promise<ActionResult> {
   const user = await requireUser();
   const att = await db.attachment.findFirst({
-    where: { id, client: { companyId: user.companyId } },
-    select: { clientId: true },
+    where: { id, companyId: user.companyId },
+    select: { clientId: true, opportunityId: true },
   });
   if (!att) return { ok: false, error: "Adjunto no encontrado." };
   await db.attachment.delete({ where: { id } });
-  revalidatePath(`/clientes/${att.clientId}`);
+  if (att.clientId) revalidatePath(`/clientes/${att.clientId}`);
+  if (att.opportunityId) revalidatePath(`/oportunidades/${att.opportunityId}`);
   return { ok: true };
 }

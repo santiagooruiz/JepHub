@@ -9,8 +9,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TabsLite } from "@/components/ui/tabs-lite";
 import { clientDisplayName } from "@/features/clients/queries";
+import { AttachmentsPanel } from "@/features/clients/attachments-panel";
 import { oppEstadoVariant, probLabel } from "@/features/opportunities/types";
-import { quoteEstadoVariant, formatMoney } from "@/features/quotes/types";
+import {
+  OpportunityQuotesTable,
+  type OpportunityQuoteRow,
+} from "@/features/opportunities/opportunity-quotes-table";
+import { DeleteOpportunityButton } from "@/features/opportunities/delete-opportunity-button";
+import { formatMoney } from "@/features/quotes/types";
 import { orderEstadoVariant } from "@/features/orders/types";
 import { RegisterActivity } from "@/features/activity/register-activity";
 import { Timeline } from "@/features/activity/timeline";
@@ -44,6 +50,7 @@ export default async function OportunidadDetallePage({
 }) {
   const user = await requirePermission("view", "opportunities");
   const canEdit = user.ability.can("edit", "opportunities");
+  const canDelete = user.ability.can("delete", "opportunities");
   const canEditQuotes = user.ability.can("edit", "quotes");
   const canCreateQuotes = user.ability.can("create", "quotes");
   const { id } = await params;
@@ -71,7 +78,7 @@ export default async function OportunidadDetallePage({
   });
   if (!o) notFound();
 
-  const [activities, param] = await Promise.all([
+  const [activities, param, attachments] = await Promise.all([
     db.activity.findMany({
       where: { opportunityId: o.id, companyId: user.companyId },
       include: { user: { select: { name: true } } },
@@ -81,6 +88,10 @@ export default async function OportunidadDetallePage({
       where: {
         companyId_key: { companyId: user.companyId, key: "action_activities" },
       },
+    }),
+    db.attachment.findMany({
+      where: { opportunityId: o.id, companyId: user.companyId, deletedAt: null },
+      orderBy: { createdAt: "desc" },
     }),
   ]);
   const acciones = Array.isArray(param?.value)
@@ -94,79 +105,32 @@ export default async function OportunidadDetallePage({
     .filter((q) => q.estado === "Aprobada" && !q.order)
     .flatMap((q) => q.items.map((it) => ({ quote: q, it })));
 
+  const quoteRows: OpportunityQuoteRow[] = o.quotes.map((q) => ({
+    id: q.id,
+    numero: q.numero,
+    registeredBy: q.registeredBy?.name ?? null,
+    total: Number(q.total),
+    vencida: Boolean(
+      q.fechaVencimiento && q.fechaVencimiento < hoy && q.estado !== "Aprobada"
+    ),
+    fechaVencimiento: q.fechaVencimiento
+      ? q.fechaVencimiento.toLocaleDateString("es-CO")
+      : null,
+    estado: q.estado,
+    fechaCreacion: q.createdAt.toLocaleDateString("es-CO"),
+    observacion: q.observacion,
+    actualizadaEl: q.updatedAt.toLocaleString("es-CO", {
+      dateStyle: "short",
+      timeStyle: "short",
+    }),
+  }));
+
   const tabCotizaciones = o.quotes.length ? (
-    <div className="overflow-x-auto rounded-lg border">
-      <table className="w-full border-collapse text-sm">
-        <thead>
-          <tr className="border-b bg-muted/40 text-left">
-            <th className={th}>N°</th>
-            <th className={th}>Registrado por</th>
-            <th className={`${th} text-right`}>Total</th>
-            <th className={th}>Plazo</th>
-            <th className={th}>Estado</th>
-            <th className={td} />
-          </tr>
-        </thead>
-        <tbody>
-          {o.quotes.map((q) => {
-            const vencida =
-              q.fechaVencimiento && q.fechaVencimiento < hoy && q.estado !== "Aprobada";
-            return (
-              <tr key={q.id} className="border-b last:border-0 hover:bg-muted/20">
-                <td className={td}>
-                  <Link
-                    href={`/cotizaciones/${q.id}`}
-                    className="font-medium text-primary hover:underline"
-                  >
-                    {q.numero}
-                  </Link>
-                </td>
-                <td className={`${td} text-muted-foreground`}>
-                  {q.registeredBy?.name ?? "—"}
-                </td>
-                <td className={`${td} tabular text-right whitespace-nowrap`}>
-                  {formatMoney(Number(q.total))}
-                </td>
-                <td className={td}>
-                  {vencida ? (
-                    <Badge variant="destructive">Vencida</Badge>
-                  ) : (
-                    <span className="text-muted-foreground">
-                      {q.fechaVencimiento
-                        ? q.fechaVencimiento.toLocaleDateString("es-CO")
-                        : "—"}
-                    </span>
-                  )}
-                </td>
-                <td className={td}>
-                  <Badge variant={quoteEstadoVariant(q.estado)}>{q.estado}</Badge>
-                </td>
-                <td className={`${td} text-right`}>
-                  <div className="flex justify-end gap-1">
-                    <Link
-                      href={`/cotizaciones/${q.id}`}
-                      className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent"
-                      aria-label="Ver"
-                    >
-                      <Eye className="size-4" />
-                    </Link>
-                    {canEditQuotes && (
-                      <Link
-                        href={`/cotizaciones/${q.id}/editar`}
-                        className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent"
-                        aria-label="Editar"
-                      >
-                        <Pencil className="size-4" />
-                      </Link>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
+    <OpportunityQuotesTable
+      quotes={quoteRows}
+      canEdit={canEditQuotes}
+      canDuplicate={canCreateQuotes}
+    />
   ) : (
     <Empty label="Sin cotizaciones. Crea una con «Nueva cotización»." />
   );
@@ -287,6 +251,7 @@ export default async function OportunidadDetallePage({
           <Badge variant={oppEstadoVariant(o.estado)}>{o.estado}</Badge>
         </div>
         <div className="flex gap-2">
+          {canDelete && <DeleteOpportunityButton id={o.id} numero={o.numero} />}
           {canEdit && (
             <Button asChild variant="outline">
               <Link href={`/oportunidades/${o.id}/editar`}>
@@ -336,27 +301,47 @@ export default async function OportunidadDetallePage({
           </div>
         </Card>
 
-        <Card className="p-4">
-          <TabsLite
-            tabs={[
-              {
-                id: "quo",
-                label: `Cotizaciones (${o.quotes.length})`,
-                content: tabCotizaciones,
-              },
-              {
-                id: "items",
-                label: `Ítems disponibles para pedidos (${disponibles.length})`,
-                content: tabItems,
-              },
-              {
-                id: "ord",
-                label: `Pedidos en proceso (${o.orders.length})`,
-                content: tabPedidos,
-              },
-            ]}
-          />
-        </Card>
+        <div className="space-y-6">
+          <Card className="p-4">
+            <TabsLite
+              tabs={[
+                {
+                  id: "quo",
+                  label: `Cotizaciones (${o.quotes.length})`,
+                  content: tabCotizaciones,
+                },
+                {
+                  id: "items",
+                  label: `Ítems disponibles para pedidos (${disponibles.length})`,
+                  content: tabItems,
+                },
+                {
+                  id: "ord",
+                  label: `Pedidos en proceso (${o.orders.length})`,
+                  content: tabPedidos,
+                },
+              ]}
+            />
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Archivos</CardTitle>
+            </CardHeader>
+            <div className="px-4 pb-4">
+              <AttachmentsPanel
+                opportunityId={o.id}
+                attachments={attachments.map((a) => ({
+                  id: a.id,
+                  tipoArchivo: a.tipoArchivo,
+                  observaciones: a.observaciones,
+                  url: a.url,
+                  createdAt: a.createdAt.toLocaleDateString("es-CO"),
+                }))}
+              />
+            </div>
+          </Card>
+        </div>
 
         <div className="space-y-6">
           <Card>

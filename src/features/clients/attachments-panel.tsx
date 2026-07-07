@@ -20,9 +20,11 @@ export type AttachmentItem = {
 
 export function AttachmentsPanel({
   clientId,
+  opportunityId,
   attachments,
 }: {
-  clientId: string;
+  clientId?: string;
+  opportunityId?: string;
   attachments: AttachmentItem[];
 }) {
   const router = useRouter();
@@ -38,6 +40,7 @@ export function AttachmentsPanel({
     start(async () => {
       const res = await saveAttachment({
         clientId,
+        opportunityId,
         tipoArchivo: tipo,
         observaciones: obs,
         url,

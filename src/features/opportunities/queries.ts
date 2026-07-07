@@ -2,7 +2,7 @@ import { db } from "@/lib/db";
 import { clientDisplayName } from "@/features/clients/queries";
 
 export type OpportunityOptions = {
-  clients: { id: string; name: string }[];
+  clients: { id: string; name: string; advisorId: string | null }[];
   advisors: { id: string; name: string }[];
 };
 
@@ -19,6 +19,7 @@ export async function getOpportunityOptions(
         apellidos: true,
         razonSocial: true,
         nombreComercial: true,
+        advisorId: true,
       },
       orderBy: { numero: "desc" },
     }),
@@ -30,7 +31,11 @@ export async function getOpportunityOptions(
   ]);
 
   return {
-    clients: clients.map((c) => ({ id: c.id, name: clientDisplayName(c) })),
+    clients: clients.map((c) => ({
+      id: c.id,
+      name: clientDisplayName(c),
+      advisorId: c.advisorId,
+    })),
     advisors,
   };
 }
