@@ -17,6 +17,26 @@ export type ClientRow = {
   fechaRegistro: string;
 };
 
+/** Fila de cliente leída en vivo desde el ERP (MTPROCLI). Clave = NIT. */
+export type ErpClientRow = {
+  nit: string;
+  nombre: string;
+  tipo: "Empresa" | "Persona";
+  email: string;
+  telefono: string;
+  ciudad: string;
+  asesor: string;
+  estado: string; // "Cliente" | "Prospecto"
+  fechaRegistro: string;
+};
+
+export type ErpClientStats = {
+  total: number;
+  empresas: number;
+  personas: number;
+  prospectos: number;
+};
+
 export function estadoVariant(estado: string): BadgeProps["variant"] {
   switch (estado) {
     case "Cliente":
