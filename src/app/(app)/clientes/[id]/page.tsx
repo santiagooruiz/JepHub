@@ -15,7 +15,6 @@ import { quoteEstadoVariant, formatMoney } from "@/features/quotes/types";
 import { orderEstadoVariant } from "@/features/orders/types";
 import { ContactsPanel } from "@/features/clients/contacts-panel";
 import { AttachmentsPanel } from "@/features/clients/attachments-panel";
-import { ErpClientDetail } from "@/features/clients/erp-client-detail";
 import { RegisterActivity } from "@/features/activity/register-activity";
 import { Timeline } from "@/features/activity/timeline";
 
@@ -110,12 +109,6 @@ export default async function ClienteFichaPage({
   const canManageContacts = user.ability.can("createcontact", "clients");
   const canCreateOpp = user.ability.can("create", "opportunities");
   const { id } = await params;
-
-  // El listado se alimenta del ERP y usa el NIT como identificador (empieza por
-  // dígito); los cuid de Prisma empiezan por letra. Despachamos según el formato.
-  if (/^\d/.test(id)) {
-    return <ErpClientDetail nit={id} />;
-  }
 
   const c = await db.client.findFirst({
     where: { id, companyId: user.companyId, deletedAt: null },
