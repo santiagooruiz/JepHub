@@ -4,13 +4,30 @@
 // (ESCLIENTE='S'). El nombre del asesor se resuelve por VENDEDOR → VENDEN.
 
 import { getErpPool, sql } from "./db";
-import type { ErpClientRow, ErpClientStats } from "@/features/clients/types";
+import type {
+  ErpCarteraDoc,
+  ErpClientCartera,
+  ErpClientContact,
+  ErpClientDetail,
+  ErpClientDoc,
+  ErpClientDocSummary,
+  ErpClientRow,
+  ErpClientStats,
+} from "@/features/clients/types";
+
+const ERP_ORIGEN = "FAC";
 
 /** Descarta fechas centinela/basura del ERP (1900, o años fuera de rango). */
 function cleanErpDate(s: string | null | undefined): string {
   if (!s) return "";
   const year = Number(s.slice(0, 4));
   return year >= 1990 && year <= 2100 ? s : "";
+}
+
+/** Limpia un valor de texto del ERP tratando '0' como vacío. */
+function clean(v: string | null | undefined): string {
+  const s = (v ?? "").trim();
+  return s === "0" ? "" : s;
 }
 
 export const CLIENTS_PAGE_SIZE = 25;
@@ -94,4 +111,186 @@ export async function getErpClientStats(q?: string): Promise<ErpClientStats> {
     personas: Number(r.personas ?? 0),
     prospectos: Number(r.prospectos ?? 0),
   };
+}
+
+// ─────────────────────────── Detalle del cliente ───────────────────────────
+
+/** Arma la lista de contactos desde los campos ZCONTAC1..4 de MTPROCLI. */
+function buildContacts(r: Record<string, unknown>): ErpClientContact[] {
+  const out: ErpClientContact[] = [];
+  for (let i = 1; i <= 4; i++) {
+    const nombre = clean(r[`c${i}`] as string);
+    if (!nombre) continue;
+    out.push({
+      nombre,
+      cargo: clean(r[`car${i}`] as string),
+      telefono: clean(r[`tel${i}`] as string),
+      direccion: clean(r[`dir${i}`] as string),
+    });
+  }
+  return out;
+}
+
+/** Ficha de un cliente del ERP por NIT (null si no existe o no es cliente). */
+export async function getErpClientByNit(nit: string): Promise<ErpClientDetail | null> {
+  const pool = await getErpPool();
+  const res = await pool
+    .request()
+    .input("nit", sql.Char(15), nit.trim())
+    .query(`
+      SELECT
+        LTRIM(RTRIM(C.NIT))        AS nit,
+        LTRIM(RTRIM(C.NOMBRE))     AS nombre,
+        C.PERSONANJ                AS personanj,
+        LTRIM(RTRIM(C.EMAIL))      AS email,
+        LTRIM(RTRIM(C.EMAILP))     AS emailAlt,
+        LTRIM(RTRIM(C.TEL1))       AS tel1,
+        LTRIM(RTRIM(C.TEL2))       AS tel2,
+        LTRIM(RTRIM(C.DIRECCION))  AS direccion,
+        LTRIM(RTRIM(COALESCE(NULLIF(LTRIM(RTRIM(CD.NOMBRE)), ''), C.CIUDADPRV))) AS ciudad,
+        LTRIM(RTRIM(C.PAGINAWEB))  AS web,
+        LTRIM(RTRIM(V.NOMBRE))     AS asesor,
+        LTRIM(RTRIM(CN.NOMBRE))    AS canal,
+        C.ESPROVEE                 AS esprovee,
+        LTRIM(RTRIM(C.HABILITADO)) AS habilitado,
+        C.ISPROSPECT               AS isprospect,
+        C.PLAZO                    AS plazo,
+        C.CUPOCR                   AS cupocr,
+        CONVERT(varchar, C.FECHAING, 23) AS fecha,
+        LTRIM(RTRIM(C.CONTACTO))   AS contactoPrincipal,
+        LTRIM(RTRIM(C.ZCONTAC1)) c1, LTRIM(RTRIM(C.ZCARGOCONT1)) car1, LTRIM(RTRIM(C.ZTELCONTAC1)) tel1c, LTRIM(RTRIM(C.ZDIRCONT1)) dir1,
+        LTRIM(RTRIM(C.ZCONTAC2)) c2, LTRIM(RTRIM(C.ZCARGOCONT2)) car2, LTRIM(RTRIM(C.ZTELCONTAC2)) tel2c, LTRIM(RTRIM(C.ZDIRCONT2)) dir2,
+        LTRIM(RTRIM(C.ZCONTAC3)) c3, LTRIM(RTRIM(C.ZCARGOCONT3)) car3, LTRIM(RTRIM(C.ZTELCONTAC3)) tel3c, LTRIM(RTRIM(C.ZDIRCONT3)) dir3,
+        LTRIM(RTRIM(C.ZCONTAC4)) c4, LTRIM(RTRIM(C.ZCARGOCONT4)) car4, LTRIM(RTRIM(C.ZTELCONTAC4)) tel4c, LTRIM(RTRIM(C.ZDIRCONT4)) dir4
+      FROM MTPROCLI C
+      LEFT JOIN VENDEN V ON V.CODVEN = C.VENDEDOR
+      LEFT JOIN CIUDAD CD ON CD.CODCIUDAD = C.CDCIIU
+      LEFT JOIN CANAL CN ON CN.CODCANAL = C.CANAL
+      WHERE C.NIT = @nit AND C.ESCLIENTE = 'S'`);
+  const r = res.recordset[0];
+  if (!r) return null;
+
+  const contacts = buildContacts({
+    c1: r.c1, car1: r.car1, tel1: r.tel1c, dir1: r.dir1,
+    c2: r.c2, car2: r.car2, tel2: r.tel2c, dir2: r.dir2,
+    c3: r.c3, car3: r.car3, tel3: r.tel3c, dir3: r.dir3,
+    c4: r.c4, car4: r.car4, tel4: r.tel4c, dir4: r.dir4,
+  });
+
+  const canal = clean(r.canal);
+  return {
+    nit: r.nit ?? "",
+    nombre: r.nombre || "(sin nombre)",
+    tipo: r.personanj === 2 ? "Empresa" : "Persona",
+    estado: r.isprospect ? "Prospecto" : "Cliente",
+    email: r.email || "",
+    emailAlt: r.emailAlt || "",
+    tel1: r.tel1 || "",
+    tel2: r.tel2 || "",
+    direccion: r.direccion || "",
+    ciudad: clean(r.ciudad),
+    web: r.web || "",
+    asesor: r.asesor || "",
+    canal: canal === "NO ASIGNADO" || canal === "SIN DATOS" ? "" : canal,
+    esProveedor: r.esprovee === "S",
+    habilitado: r.habilitado === "S" || r.habilitado === "1",
+    plazo: Number(r.plazo ?? 0),
+    cupoCredito: Number(r.cupocr ?? 0),
+    fechaIngreso: cleanErpDate(r.fecha),
+    contactoPrincipal: clean(r.contactoPrincipal),
+    contacts,
+  };
+}
+
+/** Saldo de cartera del cliente (documentos con saldo + aging), vía TVF del ERP. */
+export async function getErpClientCartera(nit: string): Promise<ErpClientCartera> {
+  const pool = await getErpPool();
+  const now = new Date();
+  // Siempre filtrar por Cliente: sin ese predicado la función escanea toda la cartera.
+  const res = await pool
+    .request()
+    .input("fa", sql.DateTime, now)
+    .input("fc", sql.DateTime, now)
+    .input("nit", sql.VarChar(20), nit.trim())
+    .query(`
+      SELECT
+        LTRIM(RTRIM(T_Dcto))    AS tipo,
+        LTRIM(RTRIM(Documento)) AS documento,
+        CONVERT(varchar, F_Vencim, 23) AS fVencim,
+        DiasVc AS diasVenc, Saldo AS saldo,
+        Venc_91, Venc_61_90, Venc_31_60, Venc_0_30, Por_Venc
+      FROM fnvOF_ReporteCartera_jep2(@fa, @fc)
+      WHERE Cliente = @nit AND Saldo <> 0 AND Otra_Moneda = 'N'
+        AND Multi_Moneda = 0 AND T_Dcto NOT IN ('AE')
+      ORDER BY F_Vencim`);
+
+  const docs: ErpCarteraDoc[] = res.recordset.map((r) => ({
+    tipo: r.tipo ?? "",
+    documento: r.documento ?? "",
+    fVencim: cleanErpDate(r.fVencim),
+    diasVenc: Number(r.diasVenc ?? 0),
+    saldo: Number(r.saldo ?? 0),
+  }));
+  const sum = (k: string) => res.recordset.reduce((a, r) => a + Number(r[k] ?? 0), 0);
+  return {
+    totalSaldo: docs.reduce((a, d) => a + d.saldo, 0),
+    docs,
+    aging: {
+      porVencer: sum("Por_Venc"),
+      d0_30: sum("Venc_0_30"),
+      d31_60: sum("Venc_31_60"),
+      d61_90: sum("Venc_61_90"),
+      d91: sum("Venc_91"),
+    },
+  };
+}
+
+/** Historial comercial del cliente en TRADE: resumen por tipo + documentos recientes. */
+export async function getErpClientDocuments(
+  nit: string
+): Promise<{ summary: ErpClientDocSummary[]; recent: ErpClientDoc[] }> {
+  const pool = await getErpPool();
+  const c = nit.trim();
+
+  const [summaryRes, recentRes] = await Promise.all([
+    pool.request().input("nit", sql.Char(15), c).query(`
+      SELECT
+        LTRIM(RTRIM(T.TIPODCTO))    AS tipo,
+        LTRIM(RTRIM(TD.DESCRIPCIO)) AS label,
+        COUNT(*)                    AS count,
+        SUM(T.BRUTO + T.IVABRUTO)   AS total
+      FROM TRADE T
+      LEFT JOIN TIPODCTO TD ON TD.ORIGEN = T.ORIGEN AND TD.TIPODCTO = T.TIPODCTO
+      WHERE T.ORIGEN = '${ERP_ORIGEN}' AND T.NIT = @nit
+      GROUP BY LTRIM(RTRIM(T.TIPODCTO)), LTRIM(RTRIM(TD.DESCRIPCIO))
+      ORDER BY COUNT(*) DESC`),
+    pool.request().input("nit", sql.Char(15), c).query(`
+      SELECT TOP 40
+        LTRIM(RTRIM(T.TIPODCTO))    AS tipo,
+        LTRIM(RTRIM(TD.DESCRIPCIO)) AS label,
+        LTRIM(RTRIM(T.NRODCTO))     AS numero,
+        CONVERT(varchar, T.FECHA, 23) AS fecha,
+        (T.BRUTO + T.IVABRUTO)      AS valor,
+        LTRIM(RTRIM(T.ORDEN))       AS orden
+      FROM TRADE T
+      LEFT JOIN TIPODCTO TD ON TD.ORIGEN = T.ORIGEN AND TD.TIPODCTO = T.TIPODCTO
+      WHERE T.ORIGEN = '${ERP_ORIGEN}' AND T.NIT = @nit
+      ORDER BY T.FECHA DESC, T.NRODCTO DESC`),
+  ]);
+
+  const summary: ErpClientDocSummary[] = summaryRes.recordset.map((r) => ({
+    tipo: r.tipo ?? "",
+    label: r.label || r.tipo || "",
+    count: Number(r.count ?? 0),
+    total: Number(r.total ?? 0),
+  }));
+  const recent: ErpClientDoc[] = recentRes.recordset.map((r) => ({
+    tipo: r.tipo ?? "",
+    label: r.label || r.tipo || "",
+    numero: r.numero ?? "",
+    fecha: cleanErpDate(r.fecha),
+    valor: Number(r.valor ?? 0),
+    orden: r.orden || "",
+  }));
+  return { summary, recent };
 }
