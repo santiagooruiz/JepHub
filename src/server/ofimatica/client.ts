@@ -268,9 +268,44 @@ export class OfimaticaDbClient implements ErpClient {
 }
 
 /**
+ * Resuelve, para un lote de cotizaciones (CV), el NRODCTO del PEDIDO (PD) que el
+ * ERP generó a partir de cada una. Enlace confirmado por el negocio: el PD guarda
+ * `TIPODCTOPC='CV'` y `NROSOLI = <NRODCTO de la CV>`. Devuelve un mapa CV→PD (solo
+ * las CV ya convertidas en pedido). Se hace en UNA consulta porque `TIPODCTOPC`/
+ * `NROSOLI` no están indexados y escanear TRADE por cada CV sería costoso.
+ */
+export async function fetchPedidoNumeros(cvNros: string[]): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  const clean = [...new Set(cvNros.map((c) => c.trim()).filter(Boolean))];
+  if (clean.length === 0) return map;
+
+  const pool = await getErpPool();
+  const request = pool.request();
+  const placeholders = clean.map((cv, i) => {
+    request.input(`cv${i}`, sql.Char(10), cv);
+    return `@cv${i}`;
+  });
+  const res = await request.query(`
+    SELECT LTRIM(RTRIM(NROSOLI)) AS cv, LTRIM(RTRIM(NRODCTO)) AS pd
+    FROM TRADE
+    WHERE ORIGEN = '${ERP_ORIGEN}' AND TIPODCTO = '${ERP_TIPODCTO_PEDIDO}'
+      AND LTRIM(RTRIM(TIPODCTOPC)) = '${ERP_TIPODCTO_COTIZACION}'
+      AND LTRIM(RTRIM(NROSOLI)) IN (${placeholders.join(", ")})
+    ORDER BY FECHA ASC`);
+  // Si una CV tuviera varios PD, gana el más reciente (orden ASC → último set).
+  for (const row of res.recordset) map.set(row.cv, row.pd);
+  return map;
+}
+
+/** Conveniencia: resuelve el PD de una sola CV (null si aún no existe). */
+export async function fetchPedidoNumero(cvNro: string): Promise<string | null> {
+  return (await fetchPedidoNumeros([cvNro])).get(cvNro.trim()) ?? null;
+}
+
+/**
  * Fechas de hitos registradas en el ERP para un documento (null = sin registrar).
  * Los hitos viven en el PEDIDO (TIPODCTO='PD') generado por el ERP a partir de la
- * cotización — ver docs/INTEGRACION-OFIMATICA.md (enlace CV→PD pendiente).
+ * cotización; usar `fetchPedidoNumero` para obtener su NRODCTO primero.
  */
 export async function fetchErpMilestones(
   nrodcto: string,

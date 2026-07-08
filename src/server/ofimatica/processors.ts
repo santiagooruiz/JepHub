@@ -1,7 +1,7 @@
 import { db } from "../../lib/db";
 import {
-  ERP_TIPODCTO_COTIZACION,
   fetchErpMilestones,
+  fetchPedidoNumeros,
   getErpClient,
   isErpDbConfigured,
 } from "./client";
@@ -149,15 +149,10 @@ export async function processMilestone(orderId: string, hito: Hito): Promise<voi
 }
 
 /**
- * Job `poll` (repetitivo): revisa en TRADEMAS los hitos de producción y aplica
- * los nuevos con el mismo camino que el webhook.
- *
- * ⚠️ PENDIENTE (enlace CV→PD): JEP-Hub crea una COTIZACIÓN 'CV', pero los hitos
- * (ZFTAPI/ZFLISTO/ZFDESPA) los registra el ERP sobre el PEDIDO 'PD' que genera a
- * partir de esa CV — otro NRODCTO. Hasta confirmar cómo se relacionan, se lee la
- * fila TRADEMAS de la propia CV (correcto por construcción, sin riesgo de cruzar
- * con un PD ajeno del mismo número). En cuanto se defina el mapeo, resolver aquí
- * el NRODCTO del PD y consultar con TIPODCTO='PD'. Ver docs/INTEGRACION-OFIMATICA.md.
+ * Job `poll` (repetitivo): resuelve el PEDIDO (PD) que el ERP generó desde
+ * nuestra cotización (CV) y aplica los hitos nuevos (ZFTAPI/ZFLISTO/ZFDESPA de
+ * TRADEMAS) por el mismo camino que el webhook. Enlace: PD.TIPODCTOPC='CV' y
+ * PD.NROSOLI = NRODCTO de la CV. Ver docs/INTEGRACION-OFIMATICA.md.
  */
 export async function processPoll(): Promise<void> {
   if (!isErpDbConfigured()) return;
@@ -177,11 +172,18 @@ export async function processPoll(): Promise<void> {
     },
   });
 
-  for (const sync of pending) {
-    // Los documentos del cliente mock ("CV-…") no existen en el ERP.
-    if (!/^\d+$/.test(sync.nPedidoOfimatica!.trim())) continue;
+  // Documentos reales (los del mock son "CV-…"). Resuelve todos los PD de una vez.
+  const cvNros = pending
+    .map((s) => s.nPedidoOfimatica!.trim())
+    .filter((n) => /^\d+$/.test(n));
+  const pdPorCv = await fetchPedidoNumeros(cvNros);
 
-    const milestones = await fetchErpMilestones(sync.nPedidoOfimatica!, ERP_TIPODCTO_COTIZACION);
+  for (const sync of pending) {
+    // La CV aún puede no estar convertida en pedido: sin PD no hay hitos.
+    const pedidoNro = pdPorCv.get(sync.nPedidoOfimatica!.trim());
+    if (!pedidoNro) continue;
+
+    const milestones = await fetchErpMilestones(pedidoNro);
     if (!milestones) continue;
 
     const registrado: Record<Hito, Date | null> = {

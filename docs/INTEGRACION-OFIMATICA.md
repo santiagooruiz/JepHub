@@ -81,15 +81,17 @@ reales): `OFIMATICA_PASSWORDIN`, `OFIMATICA_CODCC` (`051501`), `OFIMATICA_BODEGA
 ### ERP → JEP-Hub (hitos de producción)
 
 Job repetitivo `poll` (`ensureMilestonePolling`, cada `OFIMATICA_POLL_MS`,
-default 5 min): lee `ZFTAPI/ZFLISTO/ZFDESPA` en `TRADEMAS` y aplica los nuevos
-hitos con `applyMilestone` (mismo camino que el webhook
-`/api/ofimatica/webhook`, que sigue disponible si el ERP puede notificar por HTTP).
+default 5 min):
 
-> ⚠️ **PENDIENTE — enlace CV→PD.** Los hitos los registra el ERP sobre el
-> **pedido `PD`** que genera desde la CV, con **otro `NRODCTO`**. Hasta confirmar
-> cómo se relaciona ese `PD` con nuestra `CV` (¿`NRODCTOAN`/`TIPODCTOAN`? ¿otra
-> columna?), el polling lee la fila `TRADEMAS` de la propia CV (sin riesgo de
-> cruce). Definir el mapeo para leer los hitos del `PD` correcto.
+1. **Resuelve el pedido** (`fetchPedidoNumero`): el ERP genera un `PD` a partir
+   de nuestra `CV` y lo enlaza con **`TIPODCTOPC='CV'`** y **`NROSOLI = <NRODCTO
+   de la CV>`**. Mientras no exista ese `PD`, no hay hitos y se omite.
+2. Lee `ZFTAPI/ZFLISTO/ZFDESPA` del `PD` en `TRADEMAS` y aplica los nuevos hitos
+   con `applyMilestone` (mismo camino que el webhook `/api/ofimatica/webhook`,
+   que sigue disponible si el ERP puede notificar por HTTP).
+
+> Nota: este flujo CV→PD es nuevo; aún no hay `PD` con `TIPODCTOPC='CV'` en el
+> histórico porque las primeras CV se están creando ahora desde JEP-Hub.
 
 ### Consultas ad-hoc
 
@@ -99,7 +101,6 @@ interpolar strings del usuario en el SQL.
 
 ## Pendientes conocidos
 
-- **Enlace CV→PD** para el polling de hitos (ver arriba).
 - **Acabados**: `ZACABADOSP` / `ZFORMICA`/`ZCANTO`/`ZHERRAJE` aún no se mapean
   desde `LineItem.acabados` (texto libre hoy); el flujo PHP los inserta con
   código/color/nota estructurados.
