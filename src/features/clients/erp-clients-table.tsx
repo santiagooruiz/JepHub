@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, ChevronRight, Search } from "lucide-react";
 
@@ -124,16 +123,7 @@ export function ErpClientsTable({
               rows.map((c) => (
                 <tr key={c.nit} className="border-b last:border-0 hover:bg-muted/20">
                   <td className="px-3 align-middle font-medium" style={cellPy}>
-                    {c.nit ? (
-                      <Link
-                        href={`/clientes/${encodeURIComponent(c.nit)}`}
-                        className="text-primary hover:underline"
-                      >
-                        {c.nombre}
-                      </Link>
-                    ) : (
-                      c.nombre
-                    )}
+                    {c.nombre}
                   </td>
                   <td className="tabular px-3 align-middle" style={cellPy}>
                     {c.nit || "—"}
