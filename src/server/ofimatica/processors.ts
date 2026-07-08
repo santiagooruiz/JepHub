@@ -1,5 +1,10 @@
 import { db } from "../../lib/db";
-import { fetchErpMilestones, getErpClient, isErpDbConfigured } from "./client";
+import {
+  ERP_TIPODCTO_COTIZACION,
+  fetchErpMilestones,
+  getErpClient,
+  isErpDbConfigured,
+} from "./client";
 import { HITOS, type Hito } from "./types";
 import { applyMilestone, notify } from "./milestones";
 import { enqueueMilestone } from "../queue/ofimatica";
@@ -25,7 +30,6 @@ export async function processSend(orderId: string): Promise<void> {
       ordenCompra: true,
       direccionEnvio: true,
       quote: { select: { numero: true } },
-      advisor: { select: { codven: true } },
       client: {
         select: {
           numeroDocumento: true,
@@ -37,7 +41,14 @@ export async function processSend(orderId: string): Promise<void> {
         },
       },
       items: {
-        select: { referencia: true, descripcion: true, cantidad: true, precio: true, total: true },
+        select: {
+          referencia: true,
+          descripcion: true,
+          cantidad: true,
+          precio: true,
+          total: true,
+          observacionesInternas: true,
+        },
       },
     },
   });
@@ -49,6 +60,8 @@ export async function processSend(orderId: string): Promise<void> {
       : [order.client.nombres, order.client.apellidos].filter(Boolean).join(" ");
 
   try {
+    // El ERP crea una COTIZACIÓN 'CV' (nunca 'PD'/'PX'); el vendedor lo deriva
+    // el SP del maestro MTPROCLI por NIT, no se envía desde JEP-Hub.
     const erp = getErpClient();
     const result = await erp.sendOrder({
       id: order.id,
@@ -59,7 +72,6 @@ export async function processSend(orderId: string): Promise<void> {
       impuesto: Number(order.impuesto),
       nit: order.client.numeroDocumento,
       clientName,
-      codven: order.advisor?.codven ?? null,
       ordenCompra: order.ordenCompra,
       direccionEnvio: order.direccionEnvio,
       items: order.items.map((it) => ({
@@ -68,6 +80,7 @@ export async function processSend(orderId: string): Promise<void> {
         cantidad: it.cantidad,
         precio: Number(it.precio),
         total: Number(it.total),
+        nota: it.observacionesInternas,
       })),
     });
 
@@ -98,7 +111,7 @@ export async function processSend(orderId: string): Promise<void> {
       order.companyId,
       order.advisorId,
       `Pedido N° ${order.numero} enviado a ofimática`,
-      `N° ERP ${result.nPedidoOfimatica}`,
+      `Cotización N° ${result.nPedidoOfimatica} creada en el ERP`,
       `/pedidos/${orderId}`
     );
 
@@ -136,8 +149,15 @@ export async function processMilestone(orderId: string, hito: Hito): Promise<voi
 }
 
 /**
- * Job `poll` (repetitivo): revisa en TRADEMAS los hitos de los pedidos ya
- * enviados al ERP y aplica los nuevos con el mismo camino que el webhook.
+ * Job `poll` (repetitivo): revisa en TRADEMAS los hitos de producción y aplica
+ * los nuevos con el mismo camino que el webhook.
+ *
+ * ⚠️ PENDIENTE (enlace CV→PD): JEP-Hub crea una COTIZACIÓN 'CV', pero los hitos
+ * (ZFTAPI/ZFLISTO/ZFDESPA) los registra el ERP sobre el PEDIDO 'PD' que genera a
+ * partir de esa CV — otro NRODCTO. Hasta confirmar cómo se relacionan, se lee la
+ * fila TRADEMAS de la propia CV (correcto por construcción, sin riesgo de cruzar
+ * con un PD ajeno del mismo número). En cuanto se defina el mapeo, resolver aquí
+ * el NRODCTO del PD y consultar con TIPODCTO='PD'. Ver docs/INTEGRACION-OFIMATICA.md.
  */
 export async function processPoll(): Promise<void> {
   if (!isErpDbConfigured()) return;
@@ -158,10 +178,10 @@ export async function processPoll(): Promise<void> {
   });
 
   for (const sync of pending) {
-    // Los pedidos enviados con el cliente mock ("OF-…") no existen en el ERP.
+    // Los documentos del cliente mock ("CV-…") no existen en el ERP.
     if (!/^\d+$/.test(sync.nPedidoOfimatica!.trim())) continue;
 
-    const milestones = await fetchErpMilestones(sync.nPedidoOfimatica!);
+    const milestones = await fetchErpMilestones(sync.nPedidoOfimatica!, ERP_TIPODCTO_COTIZACION);
     if (!milestones) continue;
 
     const registrado: Record<Hito, Date | null> = {

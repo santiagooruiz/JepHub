@@ -47,6 +47,7 @@ Facts that will bite you if unknown:
 - **RBAC** = permissions named `{modulo}.{accion}` (e.g. `clients.create`, `backlog_design.view`) assigned per role, each with an optional **scope restriction** per role. 8 roles, ~54 permissions. Map this to CASL.
 - **Furniture domain:** quote/order line items carry `acabados` (Formica/Canto/Herraje) that can be "POR DEFINIR" until design completes; PDFs come in two flavors (normal and **con despiece** / BOM).
 - **Activity/timeline is transversal** to clients, oportunidades, cotizaciones and pedidos (a shared events/`activities` table drives the timelines, the calendar, and BI Seguimiento).
+- **⛔ REGLA DURA — inserción en el ERP ofimática:** cuando JEP-Hub escribe en la BD del ERP (`PROTOTIPO2016`, SQL Server), **NUNCA** debe insertar un pedido (`TIPODCTO='PD'` ni `'PX'`). **Exclusivamente** se inserta una cotización `TIPODCTO='CV'` (`ORIGEN='FAC'`), y **siempre** vía los stored procedures del ERP (`sp_gen_trade_generico_distribuidores` → cabecera, `sp_gen_mvTrade_Generico_Distri` → renglones, `Calculos_Trade` → totales) — nunca con `INSERT` directo a `TRADE`/`MVTRADE`. Los hitos de producción (`TRADEMAS`) son de solo lectura. Detalle completo en `docs/INTEGRACION-OFIMATICA.md`.
 
 ## Commands
 

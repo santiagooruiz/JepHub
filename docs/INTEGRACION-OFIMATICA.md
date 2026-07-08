@@ -1,8 +1,9 @@
 # Integración con el ERP "ofimática" (BD SQL Server)
 
 > Contrato definido en julio 2026. Sustituye la incógnita "API/DB/archivos" del
-> plan: la integración es **conexión directa a la base de datos** del ERP,
-> bidireccional (SELECT + INSERT), desde el worker/servidor de JEP-Hub.
+> plan: la integración es **conexión directa a la base de datos** del ERP desde
+> el worker/servidor de JEP-Hub — lectura libre (SELECT) y escritura **solo de
+> cotizaciones `CV` vía stored procedures** (nunca pedidos `PD`/`PX`).
 
 ## Conexión
 
@@ -22,51 +23,73 @@ cliente simulado (`MockErpClient`); si faltan solo algunas, `validateEnv()` fall
 Código: `src/server/ofimatica/db.ts` (pool `mssql` singleton) y
 `src/server/ofimatica/client.ts` (`OfimaticaDbClient` + `fetchErpMilestones`).
 
-## Modelo del ERP (lo relevante)
+## ⛔ REGLA DURA: solo se inserta `CV`, nunca `PD`/`PX`
 
 Un documento se identifica por la terna **(`ORIGEN`, `TIPODCTO`, `NRODCTO`)**.
-Los **pedidos** son `ORIGEN='FAC'` + `TIPODCTO='PD'`; `NRODCTO` es `char(10)`
-numérico consecutivo (formato observado `2501760` ≈ año + secuencia).
+JEP-Hub **únicamente** puede crear **cotizaciones** `ORIGEN='FAC'` +
+`TIPODCTO='CV'`. Está **prohibido** insertar pedidos (`'PD'`/`'PX'`): esos los
+genera el propio ERP a partir de la CV. La inserción se hace **exclusivamente
+vía stored procedures del ERP** (nunca `INSERT` directo a `TRADE`/`MVTRADE`, para
+respetar consecutivos, triggers contables y de inventario). Esta regla también
+está en `CLAUDE.md` y hay un guard en el código.
 
-| Tabla | Rol | Campos que usamos |
-|-------|-----|-------------------|
-| `TRADE` | Cabecera del documento (246 col., todas con default) | `FECHA`, `HORA`, `NIT`, `CODVEN`, `BRUTO`, `IVABRUTO`, `DIR`, `ORDEN`, `NOTA`, `PASSWORDIN` |
-| `MVTRADE` | Renglones (líneas de producto) | `CONSECUT`, `PRODUCTO`, `DETALLE`, `NOMBRE`, `CANTIDAD`, `VALORUNIT`, `VLRVENTA`, `NIT`, `FECHA`, `VENDEDOR` (también existen los acabados `ZFORMICA`/`ZCANTO`/`ZHERRAJE`) |
-| `TRADEMAS` | Extensión de producción: **hitos** | `ZFTAPI` (Tapicería), `ZFLISTO` (Listo), `ZFDESPA` (Despacho) — `datetime`; `'1900-01-01'` = sin registrar |
+## Modelo del ERP (lo relevante)
 
-⚠️ `TRADE` y `MVTRADE` tienen **triggers activos** del ERP
-(`Tr_Ingresa_Saldos_Costos`, `Tr_Integra_Linea_COMFAC`, …): un INSERT dispara
-lógica contable/inventario del ERP. Es el comportamiento deseado, pero no
-insertar "de prueba" sin transacción + rollback.
+| Tabla | Rol | Notas |
+|-------|-----|-------|
+| `TRADE` | Cabecera del documento (246 col., todas con default) | Se crea con `sp_gen_trade_generico_distribuidores` |
+| `MVTRADE` | Renglones (líneas de producto) | Se crean con `sp_gen_mvTrade_Generico_Distri`; también guardan acabados `ZFORMICA`/`ZCANTO`/`ZHERRAJE` |
+| `TRADEMAS` | Extensión de producción: **hitos** (solo lectura) | `ZFTAPI` (Tapicería), `ZFLISTO` (Listo), `ZFDESPA` (Despacho) — `datetime`; `'1900-01-01'` = sin registrar |
 
-⚠️ **Integridad referencial contra los maestros del ERP** (verificado con FKs
-reales): `NIT` → `MTPROCLI` (terceros), `CODVEN` → `VENDEN` (vendedores),
-`PRODUCTO` → `MTMERCIA` (productos). `OfimaticaDbClient` los valida antes de
-insertar y falla con mensaje accionable (visible en `ErpSync.ultimoError`):
-el cliente, el vendedor y las referencias del pedido **deben existir en
-ofimática** antes del envío.
+Maestros de los que depende la CV (FKs reales verificadas): `NIT` → `MTPROCLI`
+(terceros; de ahí se derivan `VENDEDOR`, `CODIGOCTA`, `CIUDADPRV`, `TIPOCAR`,
+`TIPOPER`, `CODRETE`), `CODRETE` → `MTTOPRTE` (`PRETE`/`TOPE`), `PRODUCTO` →
+`MTMERCIA` (de ahí `TIPOINV` para elegir bodega), `CODVEN` → `VENDEN`,
+`CODCC` → `CENTCOS`. `OfimaticaDbClient` valida cliente y productos **antes** de
+llamar a los SP y falla con mensaje accionable (visible en `ErpSync.ultimoError`).
+
+### Stored procedures (firmas verificadas en la BD)
+
+1. **`sp_gen_trade_generico_distribuidores`** (26 params) → crea la cabecera y
+   **devuelve un recordset con `NRODCTO`**. Deriva del cliente: `codven`,
+   `codigocta`, `ciudadcli`, `tipocar`, `tipoper`. Constantes usadas: `tipovta=1`,
+   `codcc`, `activa=0`, `autoret=0`, `calrete=0`, `calretica=0`, `ctrlcorig=1`,
+   `ctrtopes=1`, `decimales=2`, `factorsus=83.3334`, `prioridad=0`, `numcuotas=0`.
+2. **`sp_gen_mvTrade_Generico_Distri`** (17 params) → un renglón. Bodega según
+   `MTMERCIA.TIPOINV`: `01`→`MPACO`, `03`→`PTCAL`, `07`/`08`→`NOFABRI`, resto →
+   `OFIMATICA_BODEGA`. Lleva `tariva`/`iva`, `codrete`/`prete`/`tope`, `planped=1`.
+3. **`Calculos_Trade`** (`origen`, `tipodcto`, `nrodcto`) → recalcula totales.
 
 ## Flujos
 
-### JEP-Hub → ERP (envío de pedido)
+### JEP-Hub → ERP (crear cotización CV)
 
-`processSend` (worker, job `send`) → `OfimaticaDbClient.sendOrder()`, en una
-transacción SERIALIZABLE:
+`processSend` (worker, job `send`) → `OfimaticaDbClient.sendOrder()`:
 
-1. Consecutivo: `MAX(NRODCTO numérico)+1` de FAC/PD con `UPDLOCK, HOLDLOCK`.
-2. `INSERT INTO TRADE` (cabecera, `PASSWORDIN='JEPHUB'` como marca de origen).
-3. `INSERT INTO MVTRADE` por cada renglón del pedido.
-4. `INSERT INTO TRADEMAS` (fila donde producción registrará los hitos).
+1. Deriva datos del cliente (`MTPROCLI`) y retención (`MTTOPRTE`); valida productos.
+2. `EXEC sp_gen_trade_generico_distribuidores` → obtiene `NRODCTO` de la CV.
+3. Por cada renglón: `EXEC sp_gen_mvTrade_Generico_Distri` (bodega por `TIPOINV`).
+4. `EXEC Calculos_Trade` → totales.
 
-El `NRODCTO` generado queda en `ErpSync.nPedidoOfimatica`.
+El `NRODCTO` de la CV queda en `ErpSync.nPedidoOfimatica`. El vendedor **no** se
+envía desde JEP-Hub: lo pone el SP desde `MTPROCLI.VENDEDOR` por NIT.
+
+Parámetros de negocio configurables (`.env`, con defaults observados en CV
+reales): `OFIMATICA_PASSWORDIN`, `OFIMATICA_CODCC` (`051501`), `OFIMATICA_BODEGA`
+(`PTCAL`), `OFIMATICA_TARIVA` (`0`), `OFIMATICA_PORIVA` (`19`).
 
 ### ERP → JEP-Hub (hitos de producción)
 
 Job repetitivo `poll` (`ensureMilestonePolling`, cada `OFIMATICA_POLL_MS`,
-default 5 min): para cada `ErpSync` enviado y sin despacho, lee
-`ZFTAPI/ZFLISTO/ZFDESPA` en `TRADEMAS` y aplica los nuevos hitos con
-`applyMilestone` (mismo camino que el webhook `/api/ofimatica/webhook`, que
-sigue disponible si algún día el ERP puede notificar por HTTP).
+default 5 min): lee `ZFTAPI/ZFLISTO/ZFDESPA` en `TRADEMAS` y aplica los nuevos
+hitos con `applyMilestone` (mismo camino que el webhook
+`/api/ofimatica/webhook`, que sigue disponible si el ERP puede notificar por HTTP).
+
+> ⚠️ **PENDIENTE — enlace CV→PD.** Los hitos los registra el ERP sobre el
+> **pedido `PD`** que genera desde la CV, con **otro `NRODCTO`**. Hasta confirmar
+> cómo se relaciona ese `PD` con nuestra `CV` (¿`NRODCTOAN`/`TIPODCTOAN`? ¿otra
+> columna?), el polling lee la fila `TRADEMAS` de la propia CV (sin riesgo de
+> cruce). Definir el mapeo para leer los hitos del `PD` correcto.
 
 ### Consultas ad-hoc
 
@@ -76,8 +99,11 @@ interpolar strings del usuario en el SQL.
 
 ## Pendientes conocidos
 
-- `CODVEN` viene de `User.codven` (provisionar en Configuración → Usuarios).
-- Campos de acabados (`ZFORMICA`/`ZCANTO`/`ZHERRAJE` en `MVTRADE`) aún no se
-  mapean desde `LineItem.acabados` (texto libre hoy).
+- **Enlace CV→PD** para el polling de hitos (ver arriba).
+- **Acabados**: `ZACABADOSP` / `ZFORMICA`/`ZCANTO`/`ZHERRAJE` aún no se mapean
+  desde `LineItem.acabados` (texto libre hoy); el flujo PHP los inserta con
+  código/color/nota estructurados.
+- **IVA/tarifa por renglón**: hoy se usa un default global (`TARIVA=0`, `19%`);
+  si hay productos con IVA distinto, mapear por producto.
 - Producción (VM Ubuntu) debe alcanzar `10.10.1.4:1433` — validar firewall al
   desplegar.

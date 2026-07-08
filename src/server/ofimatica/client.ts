@@ -1,22 +1,37 @@
 // Cliente del ERP "ofimática". Contrato real (definido 2026-07): conexión
 // directa a la BD SQL Server del ERP (ver docs/INTEGRACION-OFIMATICA.md).
-//   - Pedido  = TRADE con ORIGEN='FAC' y TIPODCTO='PD' (+ renglones en MVTRADE).
-//   - Hitos   = fechas ZFTAPI / ZFLISTO / ZFDESPA en TRADEMAS, relacionada con
-//     TRADE por (ORIGEN, TIPODCTO, NRODCTO). '1900-01-01' significa "sin registrar".
-// Si el .env no trae OFIMATICA_DB_*, se usa el cliente simulado (dev).
+//
+// ⛔ REGLA DURA: JEP-Hub SOLO inserta cotizaciones TIPODCTO='CV' (ORIGEN='FAC'),
+//    NUNCA pedidos 'PD'/'PX'. La inserción se hace EXCLUSIVAMENTE mediante los
+//    stored procedures del ERP (jamás con INSERT directo a TRADE/MVTRADE):
+//      1. sp_gen_trade_generico_distribuidores  → cabecera (devuelve NRODCTO)
+//      2. sp_gen_mvTrade_Generico_Distri        → cada renglón
+//      3. Calculos_Trade                        → recalcula totales
+//    Réplica del flujo probado en producción (PHP registrarEncabezado).
+//
+// Los hitos de producción (ZFTAPI/ZFLISTO/ZFDESPA en TRADEMAS) son de SOLO
+// LECTURA. Si el .env no trae OFIMATICA_DB_*, se usa el cliente simulado (dev).
 
 import { getErpPool, isErpDbConfigured, sql } from "./db";
 import type { Hito } from "./types";
 
 export const ERP_ORIGEN = "FAC";
-export const ERP_TIPODCTO = "PD";
+/** Único TIPODCTO que JEP-Hub puede INSERTAR (cotización). */
+export const ERP_TIPODCTO_COTIZACION = "CV";
+/** TIPODCTO de pedido — solo para LECTURA de hitos; jamás para insertar. */
+export const ERP_TIPODCTO_PEDIDO = "PD";
+/** Tipos que JEP-Hub tiene PROHIBIDO insertar. */
+export const ERP_TIPODCTO_PROHIBIDOS = ["PD", "PX"] as const;
 
 export type ErpOrderLineInput = {
+  /** Código de producto (FK a MTMERCIA.CODIGO en el ERP). */
   referencia: string | null;
   descripcion: string | null;
   cantidad: number;
   precio: number;
   total: number;
+  /** Nota del renglón (opcional). */
+  nota?: string | null;
 };
 
 export type ErpOrderInput = {
@@ -26,17 +41,16 @@ export type ErpOrderInput = {
   total: number;
   subtotal?: number;
   impuesto?: number;
-  /** NIT / documento del cliente. */
+  /** NIT / documento del cliente (FK a MTPROCLI.NIT). */
   nit?: string | null;
   clientName?: string | null;
-  /** Código de vendedor en ofimática (User.codven). */
-  codven?: string | null;
   ordenCompra?: string | null;
   direccionEnvio?: string | null;
   items?: ErpOrderLineInput[];
 };
 
 export type ErpSendResult = {
+  /** NRODCTO de la cotización CV generada por el ERP. */
   nPedidoOfimatica: string;
   identificadorCotizacion: string;
   fechaCreacion: string; // ISO
@@ -53,8 +67,8 @@ export class MockErpClient implements ErpClient {
     await new Promise((r) => setTimeout(r, 300));
     const yy = String(new Date().getFullYear()).slice(2);
     return {
-      nPedidoOfimatica: `OF-${order.numero}${yy}`,
-      identificadorCotizacion: order.quoteNumero ? `CTZ-${order.quoteNumero}` : `PED-${order.numero}`,
+      nPedidoOfimatica: `CV-${order.numero}${yy}`,
+      identificadorCotizacion: order.quoteNumero ? `CTZ-${order.quoteNumero}` : `COT-${order.numero}`,
       fechaCreacion: new Date().toISOString(),
     };
   }
@@ -65,154 +79,212 @@ function fit(value: string | null | undefined, max: number): string {
   return (value ?? "").trim().slice(0, max);
 }
 
+/** Configuración específica del ERP con defaults observados en CV reales. */
+function erpConfig() {
+  return {
+    // Usuario/estampa del ERP (PASSWORDIN). PHP usaba $_SESSION['usuario'].
+    passwordin: fit(process.env.OFIMATICA_PASSWORDIN || "JEPHUB", 20),
+    // Centro de costo (existe en CENTCOS).
+    codcc: fit(process.env.OFIMATICA_CODCC || "051501", 15),
+    // Bodega base por defecto (se sobreescribe por TIPOINV del producto).
+    bodega: fit(process.env.OFIMATICA_BODEGA || "PTCAL", 20),
+    // Código de tarifa de IVA y porcentaje (líneas CV usan '0'/19).
+    tariva: fit(process.env.OFIMATICA_TARIVA || "0", 5),
+    poriva: Number(process.env.OFIMATICA_PORIVA || 19),
+  };
+}
+
+/** Mapeo bodega por tipo de inventario del producto (réplica del PHP). */
+function bodegaPorTipoInv(tipoinv: string, base: string): string {
+  switch (tipoinv.trim()) {
+    case "01":
+      return "MPACO";
+    case "03":
+      return "PTCAL";
+    case "07":
+    case "08":
+      return "NOFABRI";
+    default:
+      return base;
+  }
+}
+
 /**
- * Cliente real: inserta el pedido en la BD del ERP dentro de una transacción
- * (cabecera TRADE + renglones MVTRADE + fila TRADEMAS para los hitos).
- * El consecutivo se toma como MAX(NRODCTO numérico)+1 de los pedidos FAC/PD,
- * serializado con UPDLOCK/HOLDLOCK para evitar duplicados concurrentes.
- *
- * La BD del ERP exige integridad referencial contra sus maestros:
- * NIT → MTPROCLI, CODVEN → VENDEN, PRODUCTO → MTMERCIA. Se valida antes de
- * insertar para fallar con un error accionable (queda en ErpSync.ultimoError).
+ * Cliente real: crea una COTIZACIÓN (CV) en el ERP vía sus stored procedures.
+ * Deriva del maestro de terceros (MTPROCLI) los mismos campos que el flujo PHP
+ * y valida contra los maestros antes de ejecutar, para fallar con un mensaje
+ * accionable (queda en ErpSync.ultimoError) en vez de a mitad de la inserción.
  */
 export class OfimaticaDbClient implements ErpClient {
-  private async validateMasters(pool: sql.ConnectionPool, order: ErpOrderInput, nit: string) {
-    if (!nit) {
-      throw new Error("El pedido no tiene NIT de cliente (requerido por ofimática).");
+  async sendOrder(order: ErpOrderInput): Promise<ErpSendResult> {
+    const cfg = erpConfig();
+    const tipodcto = ERP_TIPODCTO_COTIZACION;
+
+    // Guard defensivo: bajo ninguna circunstancia insertar PD/PX.
+    if ((ERP_TIPODCTO_PROHIBIDOS as readonly string[]).includes(tipodcto)) {
+      throw new Error(`REGLA VIOLADA: JEP-Hub no puede insertar TIPODCTO='${tipodcto}'.`);
     }
-    const nitOk = await pool
+
+    const nit = fit(order.nit, 15);
+    if (!nit) throw new Error("El pedido no tiene NIT de cliente (requerido por ofimática).");
+
+    const pool = await getErpPool();
+
+    // 1. Datos del cliente desde MTPROCLI (vendedor, cuenta, ciudad, retención…).
+    const cliRes = await pool
       .request()
       .input("nit", sql.Char(15), nit)
-      .query("SELECT 1 AS ok FROM MTPROCLI WHERE NIT = @nit");
-    if (!nitOk.recordset.length) {
+      .query(`
+        SELECT LTRIM(RTRIM(VENDEDOR)) AS VENDEDOR, LTRIM(RTRIM(CODIGOCTA)) AS CODIGOCTA,
+               LTRIM(RTRIM(CIUDADPRV)) AS CIUDADPRV, LTRIM(RTRIM(TIPOCAR)) AS TIPOCAR,
+               LTRIM(RTRIM(TIPOPER)) AS TIPOPER, LTRIM(RTRIM(CODRETE)) AS CODRETE
+        FROM MTPROCLI WHERE NIT = @nit`);
+    const cli = cliRes.recordset[0];
+    if (!cli) {
       throw new Error(`El cliente con NIT "${nit}" no existe en ofimática (maestro MTPROCLI).`);
     }
 
-    const codven = fit(order.codven, 15);
-    if (codven) {
-      const venOk = await pool
+    // 2. Retención (PRETE/TOPE) por CODRETE desde MTTOPRTE.
+    let prete = "0";
+    let tope = "0";
+    if (cli.CODRETE) {
+      const retRes = await pool
         .request()
-        .input("codven", sql.Char(15), codven)
-        .query("SELECT 1 AS ok FROM VENDEN WHERE CODVEN = @codven");
-      if (!venOk.recordset.length) {
-        throw new Error(`El vendedor "${codven}" no existe en ofimática (maestro VENDEN).`);
+        .input("codrete", sql.Char(5), cli.CODRETE)
+        .query("SELECT PRETE, TOPE FROM MTTOPRTE WHERE CODRETE = @codrete");
+      if (retRes.recordset[0]) {
+        prete = String(retRes.recordset[0].PRETE ?? 0);
+        tope = String(retRes.recordset[0].TOPE ?? 0);
       }
     }
 
+    // 3. Validar productos y precargar su TIPOINV (para la bodega).
     const items = order.items ?? [];
+    if (items.length === 0) throw new Error("La cotización no tiene renglones.");
+    const tipoInvByRef = new Map<string, string>();
     const faltantes: string[] = [];
     for (const it of items) {
       const ref = fit(it.referencia, 20);
-      if (!ref) {
-        throw new Error("Hay renglones del pedido sin referencia de producto (requerida por ofimática).");
-      }
-      const prodOk = await pool
+      if (!ref) throw new Error("Hay renglones sin referencia de producto (requerida por ofimática).");
+      if (tipoInvByRef.has(ref)) continue;
+      const prodRes = await pool
         .request()
         .input("ref", sql.Char(20), ref)
-        .query("SELECT 1 AS ok FROM MTMERCIA WHERE CODIGO = @ref");
-      if (!prodOk.recordset.length) faltantes.push(ref);
+        .query("SELECT LTRIM(RTRIM(TIPOINV)) AS TIPOINV FROM MTMERCIA WHERE CODIGO = @ref");
+      if (!prodRes.recordset[0]) faltantes.push(ref);
+      else tipoInvByRef.set(ref, prodRes.recordset[0].TIPOINV ?? "");
     }
     if (faltantes.length) {
       throw new Error(
         `Referencias sin crear en ofimática (maestro MTMERCIA): ${[...new Set(faltantes)].join(", ")}.`
       );
     }
-  }
 
-  async sendOrder(order: ErpOrderInput): Promise<ErpSendResult> {
-    const pool = await getErpPool();
-    const nit = fit(order.nit, 15);
-    await this.validateMasters(pool, order, nit);
+    const now = new Date();
+    const hora = now.toTimeString().slice(0, 8);
 
-    const tx = new sql.Transaction(pool);
-    await tx.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
-    try {
-      const maxRes = await new sql.Request(tx).query(`
-        SELECT MAX(TRY_CAST(LTRIM(RTRIM(NRODCTO)) AS int)) AS maxN
-        FROM TRADE WITH (UPDLOCK, HOLDLOCK)
-        WHERE ORIGEN = '${ERP_ORIGEN}' AND TIPODCTO = '${ERP_TIPODCTO}'
-          AND TRY_CAST(LTRIM(RTRIM(NRODCTO)) AS int) IS NOT NULL`);
-      const nro = String((maxRes.recordset[0]?.maxN ?? 0) + 1);
+    // 4. Cabecera → sp_gen_trade_generico_distribuidores (devuelve NRODCTO).
+    // Los nombres de input DEBEN coincidir con los parámetros del SP (mssql liga
+    // por nombre, no por posición como el PHP con PDO).
+    const headRes = await pool
+      .request()
+      .input("pOrigen", sql.Char(3), ERP_ORIGEN)
+      .input("pTipodctoGenerar", sql.Char(2), tipodcto)
+      .input("pFecha", sql.DateTime, now)
+      .input("Pnit", sql.Char(15), nit)
+      .input("Porden", sql.Char(10), fit(order.ordenCompra, 10))
+      .input("pPassword", sql.Char(20), cfg.passwordin)
+      .input("pCodven", sql.Char(10), fit(cli.VENDEDOR, 10))
+      .input("pTipovta", sql.Char(10), "1")
+      .input("pCodcc", sql.Char(15), cfg.codcc)
+      .input("pCodigoCta", sql.Char(15), fit(cli.CODIGOCTA, 15))
+      .input("pACTIVA", sql.Char(15), "0")
+      .input("pAUTORET", sql.Char(15), "0")
+      .input("pCALRETE", sql.Char(15), "0")
+      .input("pCALRETICA", sql.Char(15), "0")
+      .input("pCIUDADCLI", sql.Char(15), fit(cli.CIUDADPRV, 15))
+      .input("pCTRLCORIG", sql.Char(15), "1")
+      .input("pCTRTOPES", sql.Char(15), "1")
+      .input("pDECIMALES", sql.Char(15), "2")
+      .input("pFACTORSUS", sql.Char(15), "83.3334")
+      .input("pHORA", sql.Char(15), hora)
+      .input("pMOTIVOTRAS", sql.Char(15), "")
+      .input("pPRIORIDAD", sql.Char(15), "0")
+      .input("pRESPICA", sql.Char(15), "0")
+      .input("pTIPOCAR", sql.Char(15), fit(cli.TIPOCAR, 15))
+      .input("pTIPOPER", sql.Char(15), fit(cli.TIPOPER, 15))
+      .input("pNUMCUOTAS", sql.Char(10), "0")
+      .execute("sp_gen_trade_generico_distribuidores");
 
-      const now = new Date();
-      const hora = now.toTimeString().slice(0, 8);
-      const codven = fit(order.codven, 15);
-
-      // CODVEN es FK a VENDEN: si el pedido no trae vendedor, se omite la
-      // columna para que aplique el default del ERP.
-      const headReq = new sql.Request(tx)
-        .input("nro", sql.Char(10), nro)
-        .input("fecha", sql.DateTime, now)
-        .input("hora", sql.Char(8), hora)
-        .input("nit", sql.Char(15), nit)
-        .input("bruto", sql.Numeric(18, 2), order.subtotal ?? order.total)
-        .input("iva", sql.Numeric(18, 2), order.impuesto ?? 0)
-        .input("dir", sql.Char(200), fit(order.direccionEnvio, 200))
-        .input("orden", sql.Char(20), fit(order.ordenCompra, 20))
-        .input("nota", sql.Char(250), fit(`JEP-Hub pedido N° ${order.numero}`, 250));
-      if (codven) headReq.input("codven", sql.Char(15), codven);
-      await headReq.query(`
-        INSERT INTO TRADE (ORIGEN, TIPODCTO, NRODCTO, FECHA, HORA, NIT,
-                           BRUTO, IVABRUTO, DIR, ORDEN, NOTA, PASSWORDIN${codven ? ", CODVEN" : ""})
-        VALUES ('${ERP_ORIGEN}', '${ERP_TIPODCTO}', @nro, @fecha, @hora, @nit,
-                @bruto, @iva, @dir, @orden, @nota, 'JEPHUB'${codven ? ", @codven" : ""})`);
-
-      const items = order.items ?? [];
-      for (let i = 0; i < items.length; i++) {
-        const it = items[i];
-        const lineReq = new sql.Request(tx)
-          .input("nro", sql.Char(10), nro)
-          .input("consecut", sql.Numeric(18, 0), i + 1)
-          .input("producto", sql.Char(20), fit(it.referencia, 20))
-          .input("detalle", sql.Char(250), fit(it.descripcion, 250))
-          .input("nombre", sql.Char(250), fit(order.clientName, 250))
-          .input("cantidad", sql.Numeric(18, 2), it.cantidad)
-          .input("valorunit", sql.Numeric(18, 2), it.precio)
-          .input("vlrventa", sql.Numeric(18, 2), it.total)
-          .input("nit", sql.Char(15), nit)
-          .input("fecha", sql.DateTime, now);
-        if (codven) lineReq.input("vendedor", sql.Char(15), codven);
-        await lineReq.query(`
-          INSERT INTO MVTRADE (ORIGEN, TIPODCTO, NRODCTO, CONSECUT, PRODUCTO, DETALLE,
-                               NOMBRE, CANTIDAD, VALORUNIT, VLRVENTA, NIT, FECHA${codven ? ", VENDEDOR" : ""})
-          VALUES ('${ERP_ORIGEN}', '${ERP_TIPODCTO}', @nro, @consecut, @producto, @detalle,
-                  @nombre, @cantidad, @valorunit, @vlrventa, @nit, @fecha${codven ? ", @vendedor" : ""})`);
-      }
-
-      // Fila de TRADEMAS donde el ERP registrará los hitos de producción.
-      await new sql.Request(tx).input("nro", sql.Char(10), nro).query(`
-        IF NOT EXISTS (SELECT 1 FROM TRADEMAS
-                       WHERE ORIGEN = '${ERP_ORIGEN}' AND TIPODCTO = '${ERP_TIPODCTO}' AND NRODCTO = @nro)
-          INSERT INTO TRADEMAS (ORIGEN, TIPODCTO, NRODCTO) VALUES ('${ERP_ORIGEN}', '${ERP_TIPODCTO}', @nro)`);
-
-      await tx.commit();
-
-      return {
-        nPedidoOfimatica: nro,
-        identificadorCotizacion: order.quoteNumero
-          ? `CTZ-${order.quoteNumero}`
-          : `PED-${order.numero}`,
-        fechaCreacion: now.toISOString(),
-      };
-    } catch (err) {
-      await tx.rollback().catch(() => {});
-      throw err;
+    const headRow = (headRes.recordset?.[0] ?? {}) as Record<string, unknown>;
+    const nroKey = Object.keys(headRow).find((k) => k.toLowerCase() === "nrodcto");
+    const nro = nroKey ? String(headRow[nroKey]).trim() : "";
+    if (!nro) {
+      throw new Error("sp_gen_trade_generico_distribuidores no devolvió NRODCTO.");
     }
+
+    // 5. Renglones → sp_gen_mvTrade_Generico_Distri (uno por producto).
+    let zrenglon = 1;
+    for (const it of items) {
+      const ref = fit(it.referencia, 20);
+      const bodega = bodegaPorTipoInv(tipoInvByRef.get(ref) ?? "", cfg.bodega);
+      await pool
+        .request()
+        .input("pOrigen", sql.Char(3), ERP_ORIGEN)
+        .input("pTipodctoGenerar", sql.Char(2), tipodcto)
+        .input("pNrodctoGenerar", sql.Char(10), nro)
+        .input("Pproducto", sql.Char(20), ref)
+        .input("Pcantidad", sql.Numeric(18, 2), it.cantidad)
+        .input("Pvalorunit", sql.Numeric(18, 2), it.precio)
+        .input("Pbodega", sql.Char(20), bodega)
+        .input("pPassword", sql.Char(20), cfg.passwordin)
+        .input("pNota", sql.Char(60), fit(it.nota ?? it.descripcion, 60))
+        .input("pTarIva", sql.Char(5), cfg.tariva)
+        .input("pIva", sql.Numeric(5, 2), cfg.poriva)
+        .input("zRenglon", sql.Char(10), String(zrenglon))
+        .input("pCODRETE", sql.Char(10), fit(cli.CODRETE, 10))
+        .input("pPORRETE", sql.Char(10), prete)
+        .input("pTOPRETE", sql.Char(10), tope)
+        .input("pCODCC", sql.Char(10), cfg.codcc)
+        .input("pPLANPED", sql.Char(10), "1")
+        .execute("sp_gen_mvTrade_Generico_Distri");
+      zrenglon++;
+    }
+
+    // 6. Recalcular totales de la cotización.
+    await pool
+      .request()
+      .input("pOrigen", sql.Char(3), ERP_ORIGEN)
+      .input("pTipoDcto", sql.Char(2), tipodcto)
+      .input("pNroDcto", sql.Char(10), nro)
+      .execute("Calculos_Trade");
+
+    return {
+      nPedidoOfimatica: nro,
+      identificadorCotizacion: order.quoteNumero ? `CTZ-${order.quoteNumero}` : `COT-${order.numero}`,
+      fechaCreacion: now.toISOString(),
+    };
   }
 }
 
-/** Fechas de hitos registradas en el ERP para un pedido (null = sin registrar). */
+/**
+ * Fechas de hitos registradas en el ERP para un documento (null = sin registrar).
+ * Los hitos viven en el PEDIDO (TIPODCTO='PD') generado por el ERP a partir de la
+ * cotización — ver docs/INTEGRACION-OFIMATICA.md (enlace CV→PD pendiente).
+ */
 export async function fetchErpMilestones(
-  nPedidoOfimatica: string
+  nrodcto: string,
+  tipodcto: string = ERP_TIPODCTO_PEDIDO
 ): Promise<Record<Hito, Date | null> | null> {
   const pool = await getErpPool();
   const res = await pool
     .request()
-    .input("nro", sql.Char(10), nPedidoOfimatica.trim())
+    .input("nro", sql.Char(10), nrodcto.trim())
+    .input("tipo", sql.Char(2), tipodcto)
     .query(`
       SELECT ZFTAPI, ZFLISTO, ZFDESPA
       FROM TRADEMAS
-      WHERE ORIGEN = '${ERP_ORIGEN}' AND TIPODCTO = '${ERP_TIPODCTO}' AND NRODCTO = @nro`);
+      WHERE ORIGEN = '${ERP_ORIGEN}' AND TIPODCTO = @tipo AND NRODCTO = @nro`);
   const row = res.recordset[0];
   if (!row) return null;
 
