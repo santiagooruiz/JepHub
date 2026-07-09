@@ -44,6 +44,22 @@ function buildSearch(request: sql.Request, q: string): string {
   return "AND (C.NOMBRE LIKE @q OR C.NIT LIKE @q OR C.EMAIL LIKE @q)";
 }
 
+/** Filtro por tipo desde las tarjetas de resumen del listado. */
+export type ErpClientTipoFiltro = "empresas" | "personas" | "prospectos";
+
+function buildTipoFilter(tipo?: ErpClientTipoFiltro): string {
+  switch (tipo) {
+    case "empresas":
+      return "AND C.PERSONANJ = 2";
+    case "personas":
+      return "AND (C.PERSONANJ <> 2 OR C.PERSONANJ IS NULL)";
+    case "prospectos":
+      return "AND C.ISPROSPECT = 1";
+    default:
+      return "";
+  }
+}
+
 /**
  * WHERE de alcance por asesor: limita a clientes cuyo MTPROCLI.VENDEDOR esté en
  * los codven del usuario (rol Asesor). `undefined` = sin restricción (admin).
@@ -67,6 +83,8 @@ export async function getErpClients(opts: {
   pageSize?: number;
   /** Alcance por asesor (rol Asesor): solo clientes con VENDEDOR en estos codven. */
   codvens?: string[];
+  /** Filtro de las tarjetas: empresas / personas / prospectos. */
+  tipo?: ErpClientTipoFiltro;
 }): Promise<{ rows: ErpClientRow[]; total: number }> {
   const pool = await getErpPool();
   const page = Math.max(1, opts.page ?? 1);
@@ -79,6 +97,7 @@ export async function getErpClients(opts: {
     .input("size", sql.Int, pageSize);
   const filtro = buildSearch(request, opts.q ?? "");
   const scope = buildCodvenScope(request, opts.codvens);
+  const tipoFiltro = buildTipoFilter(opts.tipo);
 
   // COUNT(*) OVER() devuelve el total del set filtrado en la misma consulta.
   const res = await request.query(`
@@ -95,7 +114,7 @@ export async function getErpClients(opts: {
       COUNT(*) OVER()                  AS total
     FROM MTPROCLI C
     LEFT JOIN VENDEN V ON V.CODVEN = C.VENDEDOR
-    WHERE C.ESCLIENTE = 'S' ${filtro} ${scope}
+    WHERE C.ESCLIENTE = 'S' ${filtro} ${scope} ${tipoFiltro}
     ORDER BY C.FECHAING DESC, C.NIT
     OFFSET @offset ROWS FETCH NEXT @size ROWS ONLY`);
 

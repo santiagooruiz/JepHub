@@ -4,14 +4,21 @@ import { UserPlus } from "lucide-react";
 import { requirePermission } from "@/lib/guard";
 import { Button } from "@/components/ui/button";
 import { ErpClientsTable } from "@/features/clients/erp-clients-table";
-import { CLIENTS_PAGE_SIZE, getErpClients, getErpClientStats } from "@/server/ofimatica/clients";
+import {
+  CLIENTS_PAGE_SIZE,
+  getErpClients,
+  getErpClientStats,
+  type ErpClientTipoFiltro,
+} from "@/server/ofimatica/clients";
 
 export const dynamic = "force-dynamic";
+
+const TIPOS: ErpClientTipoFiltro[] = ["empresas", "personas", "prospectos"];
 
 export default async function ClientesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; page?: string }>;
+  searchParams: Promise<{ q?: string; page?: string; tipo?: string }>;
 }) {
   const user = await requirePermission("view", "clients");
   const canCreate = user.ability.can("create", "clients");
@@ -19,13 +26,18 @@ export default async function ClientesPage({
   const sp = await searchParams;
   const q = sp.q?.trim() ?? "";
   const page = Math.max(1, Number(sp.page) || 1);
+  const tipo = TIPOS.includes(sp.tipo as ErpClientTipoFiltro)
+    ? (sp.tipo as ErpClientTipoFiltro)
+    : undefined;
 
   // Alcance por rol: un Asesor solo ve los clientes cuyo VENDEDOR (MTPROCLI)
   // sea uno de sus codven; admin y demás roles ven todo.
   const codvens = user.roleName === "Asesor" ? user.codvens : undefined;
 
+  // Las tarjetas muestran los conteos por categoría (sin el filtro tipo);
+  // la tabla sí se filtra por la tarjeta seleccionada.
   const [{ rows, total }, stats] = await Promise.all([
-    getErpClients({ q, page, pageSize: CLIENTS_PAGE_SIZE, codvens }),
+    getErpClients({ q, page, pageSize: CLIENTS_PAGE_SIZE, codvens, tipo }),
     getErpClientStats(q, codvens),
   ]);
 
@@ -51,6 +63,7 @@ export default async function ClientesPage({
         page={page}
         pageSize={CLIENTS_PAGE_SIZE}
         q={q}
+        tipo={tipo ?? null}
         stats={stats}
       />
     </div>

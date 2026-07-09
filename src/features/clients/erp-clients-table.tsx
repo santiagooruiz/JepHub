@@ -25,6 +25,7 @@ export function ErpClientsTable({
   page,
   pageSize,
   q,
+  tipo,
   stats,
 }: {
   rows: ErpClientRow[];
@@ -32,6 +33,8 @@ export function ErpClientsTable({
   page: number;
   pageSize: number;
   q: string;
+  /** Filtro activo de las tarjetas (empresas/personas/prospectos) o null. */
+  tipo: string | null;
   stats: ErpClientStats;
 }) {
   const router = useRouter();
@@ -42,11 +45,15 @@ export function ErpClientsTable({
   const firstRun = React.useRef(true);
 
   const navigate = React.useCallback(
-    (next: { q?: string; page?: number }) => {
+    (next: { q?: string; page?: number; tipo?: string | null }) => {
       const params = new URLSearchParams(searchParams.toString());
       if (next.q !== undefined) {
         if (next.q) params.set("q", next.q);
         else params.delete("q");
+      }
+      if (next.tipo !== undefined) {
+        if (next.tipo) params.set("tipo", next.tipo);
+        else params.delete("tipo");
       }
       if (next.page !== undefined) params.set("page", String(next.page));
       startTransition(() => router.push(`${pathname}?${params.toString()}`));
@@ -70,19 +77,48 @@ export function ErpClientsTable({
 
   return (
     <div className="space-y-6">
-      {/* Resumen */}
+      {/* Resumen: tarjetas clicables que filtran la tabla por tipo. */}
       <div
         className="grid grid-cols-2 sm:grid-cols-4"
         style={{ gap: "var(--card-gap)" }}
       >
-        {STATS.map((s) => (
-          <Card key={s.key} className="p-3">
-            <p className="truncate text-sm text-muted-foreground">{s.label}</p>
-            <p className="tabular mt-1 text-xl font-bold">
-              {stats[s.key].toLocaleString("es-CO")}
-            </p>
-          </Card>
-        ))}
+        {STATS.map((s) => {
+          // "Total" limpia el filtro; las demás filtran por su categoría.
+          const value = s.key === "total" ? null : s.key;
+          const active = tipo === value || (s.key === "total" && !tipo);
+          return (
+            <Card
+              key={s.key}
+              role="button"
+              tabIndex={0}
+              onClick={() => navigate({ tipo: active ? null : value, page: 1 })}
+              onKeyDown={(e) =>
+                e.key === "Enter" && navigate({ tipo: active ? null : value, page: 1 })
+              }
+              className={cn(
+                "cursor-pointer p-3 transition-colors hover:border-primary/50",
+                active &&
+                  (s.key === "total"
+                    ? "border-primary"
+                    : "border-primary bg-primary text-primary-foreground")
+              )}
+            >
+              <p
+                className={cn(
+                  "truncate text-sm",
+                  active && s.key !== "total"
+                    ? "text-primary-foreground/80"
+                    : "text-muted-foreground"
+                )}
+              >
+                {s.label}
+              </p>
+              <p className="tabular mt-1 text-xl font-bold">
+                {stats[s.key].toLocaleString("es-CO")}
+              </p>
+            </Card>
+          );
+        })}
       </div>
 
       {/* Buscador */}
