@@ -1,18 +1,16 @@
 import { db } from "@/lib/db";
 import { isErpDbConfigured } from "@/server/ofimatica/db";
-import { getErpAsesores } from "@/server/ofimatica/clients";
+import { getErpAsesores, getErpPriceLists } from "@/server/ofimatica/clients";
 import type { ClientOptions } from "./client-form";
 
 export async function getClientOptions(
   companyId: string
 ): Promise<ClientOptions> {
+  const erpConfigured = isErpDbConfigured();
   const [asesores, priceLists, sectors, channels] = await Promise.all([
-    // Asesores: catálogo del ERP (VENDEN). En dev sin ERP, lista vacía.
-    isErpDbConfigured() ? getErpAsesores() : Promise.resolve([]),
-    db.priceList.findMany({
-      select: { id: true, name: true },
-      orderBy: { name: "asc" },
-    }),
+    // Asesores y listas de precio salen del ERP (VENDEN / MTPRECIO).
+    erpConfigured ? getErpAsesores() : Promise.resolve([]),
+    erpConfigured ? getErpPriceLists() : Promise.resolve([]),
     db.sector.findMany({
       include: {
         subsectors: { select: { id: true, name: true }, orderBy: { name: "asc" } },

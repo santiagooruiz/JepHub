@@ -200,6 +200,7 @@ model Client {
   advisorId            String?
   advisor              User?      @relation("ClientAdvisor", fields: [advisorId], references: [id])
   codven               String?    // asesor del ERP (VENDEN.CODVEN)
+  codprecio            String?    // lista de precio del ERP (MTPRECIO.CODPRECIO)
   ultimaInteraccion    DateTime?
   createdAt            DateTime   @default(now())
   updatedAt            DateTime   @updatedAt

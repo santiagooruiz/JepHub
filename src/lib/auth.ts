@@ -63,10 +63,16 @@ export type CurrentUser = {
   email: string;
   companyId: string;
   roleName: string | null;
+  codven: string | null;
   status: string;
   grants: { key: string; restriction: string | null }[];
   ability: AppAbility;
 };
+
+/** true si el usuario tiene el rol Administrador. */
+export function isAdmin(user: { roleName: string | null }): boolean {
+  return user.roleName === "Administrador";
+}
 
 /** Usuario autenticado (cacheado por request). */
 export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
@@ -103,6 +109,7 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
     email: user.email,
     companyId: user.companyId,
     roleName: user.role?.name ?? null,
+    codven: user.codven ?? null,
     status: user.status,
     grants,
     ability: defineAbilitiesFor(grants),

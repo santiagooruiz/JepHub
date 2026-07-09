@@ -11,7 +11,7 @@ import { saveClient } from "./actions";
 
 export type ClientOptions = {
   asesores: { codven: string; nombre: string }[];
-  priceLists: { id: string; name: string }[];
+  priceLists: { codprecio: string; nombre: string }[];
   sectors: { id: string; name: string; subsectors: { id: string; name: string }[] }[];
   channels: string[];
 };
@@ -33,7 +33,7 @@ export type ClientEditing = {
   pais: string | null;
   ciudad: string | null;
   observaciones: string | null;
-  priceListId: string | null;
+  codprecio: string | null;
   sectorId: string | null;
   subSectorId: string | null;
   canal: string | null;
@@ -64,9 +64,12 @@ const selectCls =
 export function ClientForm({
   options,
   editing,
+  isAdmin = false,
 }: {
   options: ClientOptions;
   editing?: ClientEditing;
+  /** Los campos Asesor, Lista de precio y Canal solo se muestran al admin. */
+  isAdmin?: boolean;
 }) {
   const router = useRouter();
   const [f, setF] = React.useState<Omit<ClientEditing, "id">>({
@@ -85,7 +88,7 @@ export function ClientForm({
     pais: editing?.pais ?? "Colombia",
     ciudad: editing?.ciudad ?? "",
     observaciones: editing?.observaciones ?? "",
-    priceListId: editing?.priceListId ?? "",
+    codprecio: editing?.codprecio ?? "",
     sectorId: editing?.sectorId ?? "",
     subSectorId: editing?.subSectorId ?? "",
     canal: editing?.canal ?? "",
@@ -134,20 +137,22 @@ export function ClientForm({
               <option value="NATURAL">Persona Natural</option>
             </select>
           </Field>
-          <Field label="Asignar Asesor">
-            <select
-              value={f.codven ?? ""}
-              onChange={(e) => set("codven", e.target.value)}
-              className={selectCls}
-            >
-              <option value="">Seleccione</option>
-              {options.asesores.map((a) => (
-                <option key={a.codven} value={a.codven}>
-                  {a.nombre}
-                </option>
-              ))}
-            </select>
-          </Field>
+          {isAdmin && (
+            <Field label="Asignar Asesor">
+              <select
+                value={f.codven ?? ""}
+                onChange={(e) => set("codven", e.target.value)}
+                className={selectCls}
+              >
+                <option value="">Seleccione</option>
+                {options.asesores.map((a) => (
+                  <option key={a.codven} value={a.codven}>
+                    {a.nombre}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          )}
           <Field label="Estado">
             <select
               value={f.estado}
@@ -244,22 +249,26 @@ export function ClientForm({
       <Card className="p-4">
         <h3 className="mb-4 font-semibold">Información adicional</h3>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Field label="Lista de precio">
-            <select value={f.priceListId ?? ""} onChange={(e) => set("priceListId", e.target.value)} className={selectCls}>
-              <option value="">Seleccione</option>
-              {options.priceLists.map((p) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Canal">
-            <select value={f.canal ?? ""} onChange={(e) => set("canal", e.target.value)} className={selectCls}>
-              <option value="">Seleccione</option>
-              {options.channels.map((c) => (
-                <option key={c} value={c}>{c}</option>
-              ))}
-            </select>
-          </Field>
+          {isAdmin && (
+            <Field label="Lista de precio">
+              <select value={f.codprecio ?? ""} onChange={(e) => set("codprecio", e.target.value)} className={selectCls}>
+                <option value="">Seleccione</option>
+                {options.priceLists.map((p) => (
+                  <option key={p.codprecio} value={p.codprecio}>{p.nombre}</option>
+                ))}
+              </select>
+            </Field>
+          )}
+          {isAdmin && (
+            <Field label="Canal">
+              <select value={f.canal ?? ""} onChange={(e) => set("canal", e.target.value)} className={selectCls}>
+                <option value="">Seleccione</option>
+                {options.channels.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </Field>
+          )}
           <Field label="Sector">
             <select
               value={f.sectorId ?? ""}

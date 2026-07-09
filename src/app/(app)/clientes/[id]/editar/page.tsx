@@ -4,6 +4,7 @@ import { ChevronLeft } from "lucide-react";
 
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/guard";
+import { isAdmin } from "@/lib/auth";
 import { getClientOptions } from "@/features/clients/queries";
 import { ClientForm, type ClientEditing } from "@/features/clients/client-form";
 
@@ -40,7 +41,7 @@ export default async function EditarClientePage({
     pais: c.pais,
     ciudad: c.ciudad,
     observaciones: c.observaciones,
-    priceListId: c.priceListId,
+    codprecio: c.codprecio,
     sectorId: c.sectorId,
     subSectorId: c.subSectorId,
     canal: c.canal,
@@ -58,7 +59,7 @@ export default async function EditarClientePage({
       <h1 className="mb-6 text-2xl font-semibold tracking-tight">
         Editar cliente
       </h1>
-      <ClientForm options={options} editing={editing} />
+      <ClientForm options={options} editing={editing} isAdmin={isAdmin(user)} />
     </div>
   );
 }

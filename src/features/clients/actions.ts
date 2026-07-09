@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import { db } from "@/lib/db";
 import { requirePermission, requireUser } from "@/lib/guard";
+import { isAdmin } from "@/lib/auth";
 import { isErpDbConfigured } from "@/server/ofimatica/db";
 import { insertErpClient } from "@/server/ofimatica/clients";
 import type { ActionResult } from "@/features/config/actions";
@@ -32,7 +33,7 @@ const clientSchema = z.object({
   pais: nullableStr,
   ciudad: nullableStr,
   observaciones: nullableStr,
-  priceListId: nullableStr,
+  codprecio: nullableStr,
   sectorId: nullableStr,
   subSectorId: nullableStr,
   canal: nullableStr,
@@ -56,12 +57,17 @@ export async function saveClient(input: unknown): Promise<ActionResult> {
     return { ok: false, error: "La razón social es obligatoria para persona jurídica." };
   }
 
-  const { id, ...data } = d;
+  // Asesor, lista de precio y canal solo los controla el administrador.
+  const admin = isAdmin(user);
+  const { id, codven, codprecio, canal, ...base } = d;
 
   if (id) {
+    // Editar. Un no-admin no puede tocar asesor/lista de precio/canal: se omiten
+    // del update para preservar los valores existentes.
+    const restricted = admin ? { codven, codprecio, canal } : {};
     await db.client.updateMany({
       where: { id, companyId: user.companyId },
-      data,
+      data: { ...base, ...restricted },
     });
   } else {
     // El NIT es la llave con el ERP (PK de MTPROCLI): obligatorio al registrar.
@@ -71,6 +77,11 @@ export async function saveClient(input: unknown): Promise<ActionResult> {
         error: "El número de documento (NIT) es obligatorio para registrar el cliente.",
       };
     }
+
+    // Defaults por rol: el asesor hereda su propio CODVEN y la lista PUBLICO ('2').
+    const effCodven = admin ? codven : user.codven ?? null;
+    const effCodprecio = admin ? codprecio : "2";
+    const effCanal = admin ? canal : null;
 
     const nombre =
       d.personType === "JURIDICA"
@@ -91,7 +102,8 @@ export async function saveClient(input: unknown): Promise<ActionResult> {
           telefono: d.telefono,
           direccion: d.direccion,
           esProspecto: d.estado === "Prospecto",
-          codven: d.codven,
+          codven: effCodven,
+          codprecio: effCodprecio,
         });
       } catch (err) {
         const message = err instanceof Error ? err.message : "Error desconocido";
@@ -106,7 +118,10 @@ export async function saveClient(input: unknown): Promise<ActionResult> {
     });
     await db.client.create({
       data: {
-        ...data,
+        ...base,
+        codven: effCodven,
+        codprecio: effCodprecio,
+        canal: effCanal,
         companyId: user.companyId,
         numero: (last?.numero ?? 0) + 1,
       },

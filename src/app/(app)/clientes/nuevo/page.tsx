@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 
 import { requirePermission } from "@/lib/guard";
+import { isAdmin } from "@/lib/auth";
 import { getClientOptions } from "@/features/clients/queries";
 import { ClientForm } from "@/features/clients/client-form";
 
@@ -22,7 +23,7 @@ export default async function NuevoClientePage() {
       <h1 className="mb-6 text-2xl font-semibold tracking-tight">
         Registrar prospecto
       </h1>
-      <ClientForm options={options} />
+      <ClientForm options={options} isAdmin={isAdmin(user)} />
     </div>
   );
 }

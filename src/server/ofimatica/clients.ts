@@ -128,6 +128,17 @@ export async function getErpAsesores(): Promise<{ codven: string; nombre: string
   return res.recordset.map((r) => ({ codven: r.codven, nombre: r.nombre }));
 }
 
+/** Listas de precio de venta del ERP (MTPRECIO), excluyendo las de costo. */
+export async function getErpPriceLists(): Promise<{ codprecio: string; nombre: string }[]> {
+  const pool = await getErpPool();
+  const res = await pool.request().query(`
+    SELECT LTRIM(RTRIM(CODPRECIO)) AS codprecio, LTRIM(RTRIM(DESCRIPCIO)) AS nombre
+    FROM MTPRECIO
+    WHERE LTRIM(RTRIM(CODPRECIO)) NOT IN ('CSI', 'CST', 'PAP', 'UPC', '0')
+    ORDER BY CODPRECIO`);
+  return res.recordset.map((r) => ({ codprecio: r.codprecio, nombre: r.nombre }));
+}
+
 // ─────────────────────────── Detalle del cliente ───────────────────────────
 
 /** Arma la lista de contactos desde los campos ZCONTAC1..4 de MTPROCLI. */
@@ -303,6 +314,8 @@ export async function insertErpClient(c: {
   esProspecto: boolean;
   /** Asesor del ERP (VENDEN.CODVEN). Vacío → '0' (VARIOS). */
   codven?: string | null;
+  /** Lista de precio del ERP (MTPRECIO.CODPRECIO). Vacío → '2' (PUBLICO). */
+  codprecio?: string | null;
 }): Promise<{ created: boolean }> {
   const pool = await getErpPool();
   const res = await pool
@@ -318,6 +331,7 @@ export async function insertErpClient(c: {
     .input("tipoiden", sql.Char(2), c.esEmpresa ? "01" : "02")
     .input("isprospect", sql.Bit, c.esProspecto ? 1 : 0)
     .input("vendedor", sql.Char(15), fit(c.codven, 15) || "0")
+    .input("codprecio", sql.Char(5), fit(c.codprecio, 5) || "2")
     .input("fecha", sql.DateTime, new Date())
     .query(`
       IF NOT EXISTS (SELECT 1 FROM MTPROCLI WHERE NIT = @nit)
@@ -325,11 +339,11 @@ export async function insertErpClient(c: {
         INSERT INTO MTPROCLI
           (NIT, NOMBRE, NOMBRE1, APELLIDO1, EMAIL, TEL1, DIRECCION,
            PERSONANJ, TIPOIDEN, ESCLIENTE, ESPROVEE, HABILITADO,
-           ISPROSPECT, VENDEDOR, FECHAING, FECING, PASSWORDIN)
+           ISPROSPECT, VENDEDOR, CODPRECIO, FECHAING, FECING, PASSWORDIN)
         VALUES
           (@nit, @nombre, @nom1, @ape1, @email, @tel, @dir,
            @personanj, @tipoiden, 'S', 'N', '0',
-           @isprospect, @vendedor, @fecha, @fecha, 'JEPHUB');
+           @isprospect, @vendedor, @codprecio, @fecha, @fecha, 'JEPHUB');
         SELECT CAST(1 AS int) AS created;
       END
       ELSE SELECT CAST(0 AS int) AS created;`);
