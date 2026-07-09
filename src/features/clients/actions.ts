@@ -80,6 +80,53 @@ export async function saveClient(input: unknown): Promise<ActionResult> {
   return { ok: true };
 }
 
+const anchorSchema = z.object({
+  nit: z.string().min(1),
+  nombre: z.string().min(1),
+  esEmpresa: z.boolean().optional(),
+});
+
+/**
+ * "Ancla" del cliente en PostgreSQL: registro mínimo (NIT + nombre) que permite
+ * colgar oportunidades/actividades/archivos de un cliente que vive en el ERP.
+ * Relaciona las 2 bases por `numeroDocumento = NIT`. Find-or-create.
+ */
+export async function ensureClientAnchor(
+  input: unknown
+): Promise<ActionResult & { clientId?: string }> {
+  const user = await requireUser();
+  const parsed = anchorSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Datos del cliente inválidos." };
+  const nit = parsed.data.nit.trim();
+  const nombre = parsed.data.nombre.trim();
+
+  const existing = await db.client.findFirst({
+    where: { companyId: user.companyId, numeroDocumento: nit },
+    select: { id: true },
+  });
+  if (existing) return { ok: true, clientId: existing.id };
+
+  const last = await db.client.findFirst({
+    where: { companyId: user.companyId },
+    orderBy: { numero: "desc" },
+    select: { numero: true },
+  });
+  const esEmpresa = parsed.data.esEmpresa ?? true;
+  const created = await db.client.create({
+    data: {
+      companyId: user.companyId,
+      numero: (last?.numero ?? 0) + 1,
+      numeroDocumento: nit,
+      tipoDocumento: "NIT",
+      personType: esEmpresa ? "JURIDICA" : "NATURAL",
+      ...(esEmpresa ? { razonSocial: nombre } : { nombres: nombre }),
+      estado: "Cliente",
+    },
+    select: { id: true },
+  });
+  return { ok: true, clientId: created.id };
+}
+
 export async function deleteClient(id: string): Promise<ActionResult> {
   const user = await requirePermission("delete", "clients");
   await db.client.updateMany({

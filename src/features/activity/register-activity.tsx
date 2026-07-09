@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { ensureClientAnchor } from "@/features/clients/actions";
 import { registerActivity } from "./actions";
 
 const selectCls =
@@ -14,10 +15,14 @@ export function RegisterActivity({
   entityType,
   entityId,
   acciones,
+  anchor,
 }: {
   entityType: "CLIENT" | "OPPORTUNITY" | "QUOTE" | "ORDER";
-  entityId: string;
+  /** Id del registro (cuid). Opcional si se pasa `anchor` (cliente del ERP). */
+  entityId?: string;
   acciones: string[];
+  /** Cliente del ERP: crea/resuelve el ancla por NIT antes de registrar. */
+  anchor?: { nit: string; nombre: string; esEmpresa: boolean };
 }) {
   const router = useRouter();
   const [accion, setAccion] = React.useState("");
@@ -30,9 +35,32 @@ export function RegisterActivity({
     e.preventDefault();
     setError(null);
     start(async () => {
+      let id = entityId;
+      // Cliente del ERP: asegura el ancla en PostgreSQL (por NIT) y usa su id.
+      if (anchor) {
+        const a = await ensureClientAnchor({
+          nit: anchor.nit,
+          nombre: anchor.nombre,
+          esEmpresa: anchor.esEmpresa,
+        });
+        if (!a.ok) {
+          setError(a.error);
+          toast.error(a.error);
+          return;
+        }
+        if (!a.clientId) {
+          setError("No se pudo relacionar el cliente.");
+          return;
+        }
+        id = a.clientId;
+      }
+      if (!id) {
+        setError("Falta el cliente.");
+        return;
+      }
       const res = await registerActivity({
         entityType,
-        entityId,
+        entityId: id,
         accion,
         fechaHora,
         observaciones: obs,

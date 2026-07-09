@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
-import { saveAttachment, deleteAttachment } from "./actions";
+import { saveAttachment, deleteAttachment, ensureClientAnchor } from "./actions";
 
 export type AttachmentItem = {
   id: string;
@@ -22,10 +22,13 @@ export function AttachmentsPanel({
   clientId,
   opportunityId,
   attachments,
+  anchor,
 }: {
   clientId?: string;
   opportunityId?: string;
   attachments: AttachmentItem[];
+  /** Cliente del ERP: crea/resuelve el ancla por NIT antes de guardar. */
+  anchor?: { nit: string; nombre: string; esEmpresa: boolean };
 }) {
   const router = useRouter();
   const [tipo, setTipo] = React.useState("");
@@ -38,8 +41,27 @@ export function AttachmentsPanel({
     e.preventDefault();
     setError(null);
     start(async () => {
+      let cId = clientId;
+      // Cliente del ERP: asegura el ancla en PostgreSQL (por NIT) y usa su id.
+      if (anchor) {
+        const a = await ensureClientAnchor({
+          nit: anchor.nit,
+          nombre: anchor.nombre,
+          esEmpresa: anchor.esEmpresa,
+        });
+        if (!a.ok) {
+          setError(a.error);
+          toast.error(a.error);
+          return;
+        }
+        if (!a.clientId) {
+          setError("No se pudo relacionar el cliente.");
+          return;
+        }
+        cId = a.clientId;
+      }
       const res = await saveAttachment({
-        clientId,
+        clientId: cId,
         opportunityId,
         tipoArchivo: tipo,
         observaciones: obs,

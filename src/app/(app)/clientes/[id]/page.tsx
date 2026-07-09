@@ -15,6 +15,7 @@ import { quoteEstadoVariant, formatMoney } from "@/features/quotes/types";
 import { orderEstadoVariant } from "@/features/orders/types";
 import { ContactsPanel } from "@/features/clients/contacts-panel";
 import { AttachmentsPanel } from "@/features/clients/attachments-panel";
+import { ErpClientFicha } from "@/features/clients/erp-client-ficha";
 import { RegisterActivity } from "@/features/activity/register-activity";
 import { Timeline } from "@/features/activity/timeline";
 
@@ -109,6 +110,13 @@ export default async function ClienteFichaPage({
   const canManageContacts = user.ability.can("createcontact", "clients");
   const canCreateOpp = user.ability.can("create", "opportunities");
   const { id } = await params;
+
+  // El listado sale del ERP y usa el NIT (empieza por dígito) como id; los cuid
+  // de Prisma empiezan por letra. La ficha del ERP es híbrida: datos del ERP +
+  // oportunidades/actividad/archivos de PostgreSQL (relación por NIT).
+  if (/^\d/.test(id)) {
+    return <ErpClientFicha nit={id} companyId={user.companyId} canCreateOpp={canCreateOpp} />;
+  }
 
   const c = await db.client.findFirst({
     where: { id, companyId: user.companyId, deletedAt: null },

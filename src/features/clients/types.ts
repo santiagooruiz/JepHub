@@ -37,6 +37,60 @@ export type ErpClientStats = {
   prospectos: number;
 };
 
+export type ErpClientContact = {
+  nombre: string;
+  cargo: string;
+  telefono: string;
+  direccion: string;
+};
+
+/** Ficha del cliente leída del ERP (MTPROCLI), con nombres resueltos. */
+export type ErpClientDetail = {
+  nit: string;
+  nombre: string;
+  tipo: "Empresa" | "Persona";
+  estado: string;
+  email: string;
+  emailAlt: string;
+  tel1: string;
+  tel2: string;
+  direccion: string;
+  ciudad: string;
+  web: string;
+  asesor: string;
+  canal: string;
+  esProveedor: boolean;
+  habilitado: boolean;
+  plazo: number;
+  cupoCredito: number;
+  fechaIngreso: string;
+  contactoPrincipal: string;
+  contacts: ErpClientContact[];
+};
+
+/** Documento con saldo pendiente en cartera (fnvOF_ReporteCartera_jep2). */
+export type ErpCarteraDoc = {
+  tipo: string;
+  documento: string;
+  fVencim: string;
+  diasVenc: number;
+  saldo: number;
+};
+
+export type ErpClientCartera = {
+  totalSaldo: number;
+  docs: ErpCarteraDoc[];
+  aging: { porVencer: number; d0_30: number; d31_60: number; d61_90: number; d91: number };
+};
+
+/** Renglón de los tabs Cotizaciones (CV) / Pedidos (PD), leídos de TRADE. */
+export type ErpClientDocRow = {
+  numero: string;
+  fecha: string;
+  valor: number;
+  orden: string;
+};
+
 export function estadoVariant(estado: string): BadgeProps["variant"] {
   switch (estado) {
     case "Cliente":
