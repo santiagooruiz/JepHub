@@ -4,6 +4,7 @@ import { ChevronLeft, Pencil, Eye, Plus } from "lucide-react";
 
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/guard";
+import { advisorScope } from "@/lib/scope";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -55,8 +56,9 @@ export default async function OportunidadDetallePage({
   const canCreateQuotes = user.ability.can("create", "quotes");
   const { id } = await params;
 
+  // Alcance: un Asesor no puede abrir oportunidades ajenas (404).
   const o = await db.opportunity.findFirst({
-    where: { id, companyId: user.companyId, deletedAt: null },
+    where: { id, companyId: user.companyId, deletedAt: null, ...advisorScope(user) },
     include: {
       client: true,
       advisor: { select: { name: true } },

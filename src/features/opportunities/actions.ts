@@ -5,6 +5,8 @@ import { z } from "zod";
 
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/guard";
+import { isAsesor } from "@/lib/auth";
+import { advisorScope } from "@/lib/scope";
 import type { ActionResult } from "@/features/config/actions";
 import { OPP_ESTADOS } from "./types";
 
@@ -47,6 +49,9 @@ export async function saveOpportunity(input: unknown): Promise<ActionResult> {
   const fecha = fechaCierreProyectada ? new Date(fechaCierreProyectada) : null;
   const data = {
     ...rest,
+    // Un Asesor siempre queda como dueño de sus oportunidades (no puede
+    // asignarlas a otro); el admin sí elige el asesor.
+    advisorId: isAsesor(user) ? user.id : rest.advisorId,
     clientId,
     fechaCierreProyectada:
       fecha && !Number.isNaN(fecha.getTime()) ? fecha : null,
@@ -54,7 +59,7 @@ export async function saveOpportunity(input: unknown): Promise<ActionResult> {
 
   if (id) {
     await db.opportunity.updateMany({
-      where: { id, companyId: user.companyId },
+      where: { id, companyId: user.companyId, ...advisorScope(user) },
       data,
     });
   } else {
@@ -75,7 +80,7 @@ export async function saveOpportunity(input: unknown): Promise<ActionResult> {
 export async function deleteOpportunity(id: string): Promise<ActionResult> {
   const user = await requirePermission("delete", "opportunities");
   await db.opportunity.updateMany({
-    where: { id, companyId: user.companyId },
+    where: { id, companyId: user.companyId, ...advisorScope(user) },
     data: { deletedAt: new Date() },
   });
   revalidatePath("/oportunidades");
@@ -92,7 +97,7 @@ export async function updateOpportunityStage(
     return { ok: false, error: "Estado inválido." };
   }
   await db.opportunity.updateMany({
-    where: { id, companyId: user.companyId },
+    where: { id, companyId: user.companyId, ...advisorScope(user) },
     data: { estado },
   });
   revalidatePath("/oportunidades");

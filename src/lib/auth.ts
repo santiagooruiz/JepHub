@@ -75,6 +75,11 @@ export function isAdmin(user: { roleName: string | null }): boolean {
   return user.roleName === "Administrador";
 }
 
+/** true si el usuario tiene el rol Asesor (alcance restringido a lo propio). */
+export function isAsesor(user: { roleName: string | null }): boolean {
+  return user.roleName === "Asesor";
+}
+
 /** Usuario autenticado (cacheado por request). */
 export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
   const store = await cookies();

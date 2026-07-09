@@ -4,6 +4,8 @@ import { ChevronLeft } from "lucide-react";
 
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/guard";
+import { isAsesor } from "@/lib/auth";
+import { advisorScope } from "@/lib/scope";
 import { getOpportunityOptions } from "@/features/opportunities/queries";
 import {
   OpportunityForm,
@@ -20,8 +22,9 @@ export default async function EditarOportunidadPage({
   const user = await requirePermission("edit", "opportunities");
   const { id } = await params;
 
+  // Alcance: un Asesor no puede editar oportunidades ajenas (404).
   const o = await db.opportunity.findFirst({
-    where: { id, companyId: user.companyId, deletedAt: null },
+    where: { id, companyId: user.companyId, deletedAt: null, ...advisorScope(user) },
   });
   if (!o) notFound();
 
@@ -50,7 +53,11 @@ export default async function EditarOportunidadPage({
       <h1 className="mb-6 text-2xl font-semibold tracking-tight">
         Editar oportunidad
       </h1>
-      <OpportunityForm options={options} editing={editing} />
+      <OpportunityForm
+        options={options}
+        editing={editing}
+        canPickAdvisor={!isAsesor(user)}
+      />
     </div>
   );
 }

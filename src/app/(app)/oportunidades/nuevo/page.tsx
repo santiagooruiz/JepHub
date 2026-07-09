@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 
 import { requirePermission } from "@/lib/guard";
+import { isAsesor } from "@/lib/auth";
 import { getOpportunityOptions } from "@/features/opportunities/queries";
 import { OpportunityForm } from "@/features/opportunities/opportunity-form";
 
@@ -30,7 +31,11 @@ export default async function NuevaOportunidadPage({
       <h1 className="mb-6 text-2xl font-semibold tracking-tight">
         Nueva oportunidad
       </h1>
-      <OpportunityForm options={options} defaultClientId={defaultClientId} />
+      <OpportunityForm
+        options={options}
+        defaultClientId={defaultClientId}
+        canPickAdvisor={!isAsesor(user)}
+      />
     </div>
   );
 }

@@ -38,11 +38,14 @@ export function OpportunityForm({
   options,
   editing,
   defaultClientId,
+  canPickAdvisor = true,
 }: {
   options: OpportunityOptions;
   editing?: OpportunityEditing;
   /** Cliente preseleccionado (creación desde la ficha del cliente). */
   defaultClientId?: string;
+  /** false para el rol Asesor: la oportunidad queda a su nombre (server-side). */
+  canPickAdvisor?: boolean;
 }) {
   const router = useRouter();
   const advisorOf = (clientId: string) =>
@@ -115,20 +118,22 @@ export function OpportunityForm({
           <Field label="Contacto">
             <Input value={f.contacto ?? ""} onChange={(e) => set("contacto", e.target.value)} />
           </Field>
-          <Field label="Asesor">
-            <select
-              value={f.advisorId ?? ""}
-              onChange={(e) => set("advisorId", e.target.value)}
-              className={selectCls}
-            >
-              <option value="">Seleccione</option>
-              {options.advisors.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name}
-                </option>
-              ))}
-            </select>
-          </Field>
+          {canPickAdvisor && (
+            <Field label="Asesor">
+              <select
+                value={f.advisorId ?? ""}
+                onChange={(e) => set("advisorId", e.target.value)}
+                className={selectCls}
+              >
+                <option value="">Seleccione</option>
+                {options.advisors.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          )}
           <Field label="Estado">
             <select
               value={f.estado}

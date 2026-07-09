@@ -4,6 +4,8 @@ import { ChevronLeft } from "lucide-react";
 
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/guard";
+import { isAsesor } from "@/lib/auth";
+import { quoteScope } from "@/lib/scope";
 import { getQuoteOptions } from "@/features/quotes/queries";
 import { QuoteBuilder, type QuoteEditing } from "@/features/quotes/quote-builder";
 
@@ -17,13 +19,17 @@ export default async function EditarCotizacionPage({
   const user = await requirePermission("edit", "quotes");
   const { id } = await params;
 
+  // Alcance: un Asesor no puede editar cotizaciones ajenas (404).
   const q = await db.quote.findFirst({
-    where: { id, companyId: user.companyId, deletedAt: null },
+    where: { id, companyId: user.companyId, deletedAt: null, ...quoteScope(user) },
     include: { items: true },
   });
   if (!q) notFound();
 
-  const options = await getQuoteOptions(user.companyId);
+  const options = await getQuoteOptions(
+    user.companyId,
+    isAsesor(user) ? { advisorId: user.id } : undefined
+  );
   const editing: QuoteEditing = {
     id: q.id,
     clientId: q.clientId,

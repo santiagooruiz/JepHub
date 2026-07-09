@@ -3,6 +3,7 @@ import { Plus } from "lucide-react";
 
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/guard";
+import { quoteScope } from "@/lib/scope";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -51,8 +52,9 @@ export default async function CotizacionesPage({
   const estadoFilter =
     sp.estado && QUOTE_ESTADOS.includes(sp.estado) ? sp.estado : null;
 
+  // Alcance: un Asesor solo ve cotizaciones propias (quoteScope).
   const all = await db.quote.findMany({
-    where: { companyId: user.companyId, deletedAt: null },
+    where: { companyId: user.companyId, deletedAt: null, ...quoteScope(user) },
     include: {
       client: {
         select: {

@@ -3,6 +3,7 @@ import { Plus, Table as TableIcon, LayoutGrid } from "lucide-react";
 
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/guard";
+import { advisorScope } from "@/lib/scope";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -74,8 +75,9 @@ export default async function OportunidadesPage({
   const estadoFilter =
     sp.estado && OPP_ESTADOS.includes(sp.estado) ? sp.estado : null;
 
+  // Alcance: un Asesor solo ve sus oportunidades (advisorScope).
   const all = await db.opportunity.findMany({
-    where: { companyId: user.companyId, deletedAt: null },
+    where: { companyId: user.companyId, deletedAt: null, ...advisorScope(user) },
     include: {
       client: {
         select: {

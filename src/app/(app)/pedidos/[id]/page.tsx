@@ -4,6 +4,7 @@ import { ChevronLeft } from "lucide-react";
 
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/guard";
+import { advisorScope } from "@/lib/scope";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { clientDisplayName } from "@/features/clients/queries";
@@ -42,8 +43,9 @@ export default async function PedidoDetallePage({
   const canRequestDesign = user.ability.can("create", "backlog_design");
   const { id } = await params;
 
+  // Alcance: un Asesor no puede abrir pedidos ajenos (404).
   const o = await db.order.findFirst({
-    where: { id, companyId: user.companyId, deletedAt: null },
+    where: { id, companyId: user.companyId, deletedAt: null, ...advisorScope(user) },
     include: {
       client: true,
       advisor: { select: { name: true } },

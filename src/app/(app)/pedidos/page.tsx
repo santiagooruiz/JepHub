@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/guard";
+import { advisorScope } from "@/lib/scope";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { OrdersTable } from "@/features/orders/orders-table";
@@ -48,8 +49,9 @@ export default async function PedidosPage({
   const estadoFilter =
     sp.estado && ORDER_ESTADOS.includes(sp.estado) ? sp.estado : null;
 
+  // Alcance: un Asesor solo ve sus pedidos (advisorScope).
   const all = await db.order.findMany({
-    where: { companyId: user.companyId, deletedAt: null },
+    where: { companyId: user.companyId, deletedAt: null, ...advisorScope(user) },
     include: {
       client: {
         select: {

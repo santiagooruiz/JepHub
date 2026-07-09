@@ -4,6 +4,7 @@ import { ChevronLeft, Pencil, FileText } from "lucide-react";
 
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/guard";
+import { quoteScope } from "@/lib/scope";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -36,8 +37,9 @@ export default async function CotizacionDetallePage({
   const canEdit = user.ability.can("edit", "quotes");
   const { id } = await params;
 
+  // Alcance: un Asesor no puede abrir cotizaciones ajenas (404).
   const q = await db.quote.findFirst({
-    where: { id, companyId: user.companyId, deletedAt: null },
+    where: { id, companyId: user.companyId, deletedAt: null, ...quoteScope(user) },
     include: {
       client: true,
       opportunity: { select: { id: true, numero: true, nombre: true } },

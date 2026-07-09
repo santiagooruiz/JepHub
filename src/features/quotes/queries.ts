@@ -59,7 +59,10 @@ export type QuoteOptions = {
   products: ProductOption[];
 };
 
-export async function getQuoteOptions(companyId: string): Promise<QuoteOptions> {
+export async function getQuoteOptions(
+  companyId: string,
+  opts?: { advisorId?: string }
+): Promise<QuoteOptions> {
   const [clients, opportunities, products] = await Promise.all([
     db.client.findMany({
       where: { companyId, deletedAt: null },
@@ -73,8 +76,13 @@ export async function getQuoteOptions(companyId: string): Promise<QuoteOptions> 
       },
       orderBy: { numero: "desc" },
     }),
+    // Un Asesor solo puede cotizar sobre sus propias oportunidades.
     db.opportunity.findMany({
-      where: { companyId, deletedAt: null },
+      where: {
+        companyId,
+        deletedAt: null,
+        ...(opts?.advisorId ? { advisorId: opts.advisorId } : {}),
+      },
       select: { id: true, numero: true, nombre: true, clientId: true },
       orderBy: { numero: "desc" },
     }),

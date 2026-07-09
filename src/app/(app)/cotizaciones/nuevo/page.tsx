@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 
 import { requirePermission } from "@/lib/guard";
+import { isAsesor } from "@/lib/auth";
 import { getQuoteOptions } from "@/features/quotes/queries";
 import { QuoteBuilder } from "@/features/quotes/quote-builder";
 
@@ -13,7 +14,10 @@ export default async function NuevaCotizacionPage({
   searchParams: Promise<{ oportunidadId?: string; clienteId?: string }>;
 }) {
   const user = await requirePermission("create", "quotes");
-  const options = await getQuoteOptions(user.companyId);
+  const options = await getQuoteOptions(
+    user.companyId,
+    isAsesor(user) ? { advisorId: user.id } : undefined
+  );
   const { oportunidadId, clienteId } = await searchParams;
 
   const opp = options.opportunities.find((o) => o.id === oportunidadId);
