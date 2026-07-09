@@ -20,7 +20,7 @@ export type UserEditing = {
   email: string;
   roleId: string | null;
   cargoActual: string | null;
-  codven: string | null;
+  codvens: string[];
   numeroTelefonico: string | null;
   status: "ACTIVE" | "INACTIVE" | "PASSWORD_CHANGE";
 };
@@ -51,7 +51,7 @@ export function UserForm({
     password: "",
     roleId: editing?.roleId ?? "",
     cargoActual: editing?.cargoActual ?? "",
-    codven: editing?.codven ?? "",
+    codvens: editing?.codvens ?? [],
     numeroTelefonico: editing?.numeroTelefonico ?? "",
     status: editing?.status ?? "ACTIVE",
   });
@@ -62,9 +62,18 @@ export function UserForm({
     setF((prev) => ({ ...prev, [key]: value }));
   }
 
-  // Si el codven guardado no está en la lista de asesores activos, se muestra igual.
-  const codvenFaltante =
-    !!f.codven && !options.asesores.some((a) => a.codven === f.codven);
+  function toggleCodven(cv: string) {
+    setF((prev) => ({
+      ...prev,
+      codvens: prev.codvens.includes(cv)
+        ? prev.codvens.filter((x) => x !== cv)
+        : [...prev.codvens, cv],
+    }));
+  }
+
+  // Codvens guardados que ya no están en la lista de asesores activos (se muestran igual).
+  const asesorCodvens = new Set(options.asesores.map((a) => a.codven));
+  const codvensFaltantes = f.codvens.filter((cv) => !asesorCodvens.has(cv));
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -131,23 +140,35 @@ export function UserForm({
               onChange={(e) => set("numeroTelefonico", e.target.value)}
             />
           </Field>
-          <Field label="Asesor del ERP (código vendedor)">
-            <select
-              value={f.codven ?? ""}
-              onChange={(e) => set("codven", e.target.value)}
-              className={selectCls}
-            >
-              <option value="">Ninguno</option>
-              {codvenFaltante && (
-                <option value={f.codven}>{f.codven} (actual)</option>
-              )}
-              {options.asesores.map((a) => (
-                <option key={a.codven} value={a.codven}>
-                  {a.nombre} ({a.codven})
-                </option>
+          <div className="space-y-1.5 sm:col-span-2">
+            <label className="text-sm font-medium">
+              Asesor del ERP (código vendedor)
+            </label>
+            <p className="text-xs text-muted-foreground">
+              Marca uno o varios. Si el asesor maneja varias sedes (ej. EXTERIOR y
+              LOCAL), al crear un cliente podrá elegir cuál usar.
+            </p>
+            <div className="max-h-44 space-y-1 overflow-y-auto rounded-md border p-2">
+              {codvensFaltantes.map((cv) => (
+                <label key={cv} className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked readOnly onClick={() => toggleCodven(cv)} />
+                  <span>{cv} (código actual)</span>
+                </label>
               ))}
-            </select>
-          </Field>
+              {options.asesores.map((a) => (
+                <label key={a.codven} className="flex items-center gap-2 text-sm hover:bg-muted/40">
+                  <input
+                    type="checkbox"
+                    checked={f.codvens.includes(a.codven)}
+                    onChange={() => toggleCodven(a.codven)}
+                  />
+                  <span>
+                    {a.nombre} <span className="text-muted-foreground">({a.codven})</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
           <Field label="Estado">
             <select
               value={f.status}

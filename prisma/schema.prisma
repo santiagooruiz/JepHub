@@ -147,7 +147,8 @@ model User {
   cargoActual      String?
   numeroDocumento  String?
   numeroTelefonico String?
-  codven           String? // código vendedor (ERP ofimática)
+  codven           String? // código vendedor primario (ERP ofimática) = codvens[0]
+  codvens          String[] @default([]) // códigos vendedor (un asesor puede tener varios, p.ej. EXTERIOR y LOCAL)
   lastLoginAt      DateTime?
   createdAt        DateTime   @default(now())
   updatedAt        DateTime   @updatedAt

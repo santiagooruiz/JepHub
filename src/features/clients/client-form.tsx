@@ -65,11 +65,14 @@ export function ClientForm({
   options,
   editing,
   isAdmin = false,
+  misCodvens = [],
 }: {
   options: ClientOptions;
   editing?: ClientEditing;
   /** Los campos Asesor, Lista de precio y Canal solo se muestran al admin. */
   isAdmin?: boolean;
+  /** Codvens del asesor logueado (con nombre). Si tiene >1, elige la sede al crear. */
+  misCodvens?: { codven: string; nombre: string }[];
 }) {
   const router = useRouter();
   const [f, setF] = React.useState<Omit<ClientEditing, "id">>({
@@ -137,7 +140,7 @@ export function ClientForm({
               <option value="NATURAL">Persona Natural</option>
             </select>
           </Field>
-          {isAdmin && (
+          {isAdmin ? (
             <Field label="Asignar Asesor">
               <select
                 value={f.codven ?? ""}
@@ -152,7 +155,23 @@ export function ClientForm({
                 ))}
               </select>
             </Field>
-          )}
+          ) : misCodvens.length > 1 ? (
+            // Asesor con varias sedes: elige cuál aplica a este cliente.
+            <Field label="Sede / Asesor">
+              <select
+                value={f.codven ?? ""}
+                onChange={(e) => set("codven", e.target.value)}
+                className={selectCls}
+              >
+                <option value="">Seleccione</option>
+                {misCodvens.map((a) => (
+                  <option key={a.codven} value={a.codven}>
+                    {a.nombre}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          ) : null}
           <Field label="Estado">
             <select
               value={f.estado}

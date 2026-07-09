@@ -128,6 +128,24 @@ export async function getErpAsesores(): Promise<{ codven: string; nombre: string
   return res.recordset.map((r) => ({ codven: r.codven, nombre: r.nombre }));
 }
 
+/** Resuelve el nombre de asesores del ERP para códigos específicos (VENDEN). */
+export async function getErpAsesoresByCodvens(
+  codvens: string[]
+): Promise<{ codven: string; nombre: string }[]> {
+  const clean = [...new Set(codvens.map((c) => c.trim()).filter(Boolean))];
+  if (clean.length === 0) return [];
+  const pool = await getErpPool();
+  const request = pool.request();
+  const placeholders = clean.map((c, i) => {
+    request.input(`c${i}`, sql.Char(15), c);
+    return `@c${i}`;
+  });
+  const res = await request.query(`
+    SELECT LTRIM(RTRIM(CODVEN)) AS codven, LTRIM(RTRIM(NOMBRE)) AS nombre
+    FROM VENDEN WHERE LTRIM(RTRIM(CODVEN)) IN (${placeholders.join(", ")})`);
+  return res.recordset.map((r) => ({ codven: r.codven, nombre: r.nombre }));
+}
+
 /** Listas de precio de venta del ERP (MTPRECIO), excluyendo las de costo. */
 export async function getErpPriceLists(): Promise<{ codprecio: string; nombre: string }[]> {
   const pool = await getErpPool();

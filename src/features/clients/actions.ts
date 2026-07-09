@@ -79,7 +79,15 @@ export async function saveClient(input: unknown): Promise<ActionResult> {
     }
 
     // Defaults por rol: el asesor hereda su propio CODVEN y la lista PUBLICO ('2').
-    const effCodven = admin ? codven : user.codven ?? null;
+    // Un asesor con varias sedes elige uno de SUS codvens; si no, se usa el primero.
+    let effCodven: string | null;
+    if (admin) {
+      effCodven = codven;
+    } else if (codven && user.codvens.includes(codven)) {
+      effCodven = codven;
+    } else {
+      effCodven = user.codvens[0] ?? null;
+    }
     const effCodprecio = admin ? codprecio : "2";
     const effCanal = admin ? canal : null;
 

@@ -64,6 +64,7 @@ export type CurrentUser = {
   companyId: string;
   roleName: string | null;
   codven: string | null;
+  codvens: string[];
   status: string;
   grants: { key: string; restriction: string | null }[];
   ability: AppAbility;
@@ -110,6 +111,7 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
     companyId: user.companyId,
     roleName: user.role?.name ?? null,
     codven: user.codven ?? null,
+    codvens: user.codvens?.length ? user.codvens : user.codven ? [user.codven] : [],
     status: user.status,
     grants,
     ability: defineAbilitiesFor(grants),

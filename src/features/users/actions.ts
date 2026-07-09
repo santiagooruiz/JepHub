@@ -21,7 +21,8 @@ const userSchema = z.object({
   password: z.string().optional().nullable(),
   roleId: z.string().min(1, "Perfil requerido"),
   cargoActual: nullableStr,
-  codven: nullableStr,
+  // Uno o varios códigos de vendedor del ERP (un asesor puede manejar varias sedes).
+  codvens: z.array(z.string().min(1)).optional().default([]),
   numeroTelefonico: nullableStr,
   status: z.enum(["ACTIVE", "INACTIVE", "PASSWORD_CHANGE"]).default("ACTIVE"),
 });
@@ -38,6 +39,9 @@ export async function saveUser(input: unknown): Promise<ActionResult> {
   }
   const d = parsed.data;
   const email = d.email.trim().toLowerCase();
+  // Normaliza los codvens (dedup) y el primario para compatibilidad.
+  const codvens = [...new Set(d.codvens.map((c) => c.trim()).filter(Boolean))];
+  const codven = codvens[0] ?? null;
 
   // El rol debe pertenecer a la empresa.
   const role = await db.role.findFirst({
@@ -60,7 +64,8 @@ export async function saveUser(input: unknown): Promise<ActionResult> {
         email,
         roleId: d.roleId,
         cargoActual: d.cargoActual,
-        codven: d.codven,
+        codven,
+        codvens,
         numeroTelefonico: d.numeroTelefonico,
         status: d.status,
         ...(d.password && d.password.trim()
@@ -88,7 +93,8 @@ export async function saveUser(input: unknown): Promise<ActionResult> {
         passwordHash: await hashPassword(d.password.trim()),
         roleId: d.roleId,
         cargoActual: d.cargoActual,
-        codven: d.codven,
+        codven,
+        codvens,
         numeroTelefonico: d.numeroTelefonico,
         status: d.status,
       },

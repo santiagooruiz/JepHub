@@ -29,7 +29,7 @@ export default async function EditarUsuarioPage({
     email: u.email,
     roleId: u.roleId,
     cargoActual: u.cargoActual,
-    codven: u.codven,
+    codvens: u.codvens?.length ? u.codvens : u.codven ? [u.codven] : [],
     numeroTelefonico: u.numeroTelefonico,
     status: u.status,
   };
