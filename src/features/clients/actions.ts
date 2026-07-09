@@ -5,6 +5,8 @@ import { z } from "zod";
 
 import { db } from "@/lib/db";
 import { requirePermission, requireUser } from "@/lib/guard";
+import { isErpDbConfigured } from "@/server/ofimatica/db";
+import { insertErpClient } from "@/server/ofimatica/clients";
 import type { ActionResult } from "@/features/config/actions";
 
 const nullableStr = z
@@ -62,6 +64,40 @@ export async function saveClient(input: unknown): Promise<ActionResult> {
       data,
     });
   } else {
+    // El NIT es la llave con el ERP (PK de MTPROCLI): obligatorio al registrar.
+    if (!d.numeroDocumento) {
+      return {
+        ok: false,
+        error: "El número de documento (NIT) es obligatorio para registrar el cliente.",
+      };
+    }
+
+    const nombre =
+      d.personType === "JURIDICA"
+        ? d.razonSocial || d.nombreComercial || ""
+        : [d.nombres, d.apellidos].filter(Boolean).join(" ");
+
+    // Se crea también en el ERP (MTPROCLI, HABILITADO='0'). Si falla, se aborta
+    // antes de crear en PostgreSQL para no dejar las 2 bases desincronizadas.
+    if (isErpDbConfigured()) {
+      try {
+        await insertErpClient({
+          nit: d.numeroDocumento,
+          nombre,
+          esEmpresa: d.personType === "JURIDICA",
+          nombres: d.nombres,
+          apellidos: d.apellidos,
+          email: d.email,
+          telefono: d.telefono,
+          direccion: d.direccion,
+          esProspecto: d.estado === "Prospecto",
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Error desconocido";
+        return { ok: false, error: `No se pudo crear en el ERP: ${message}` };
+      }
+    }
+
     const last = await db.client.findFirst({
       where: { companyId: user.companyId },
       orderBy: { numero: "desc" },

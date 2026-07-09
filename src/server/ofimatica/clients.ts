@@ -29,6 +29,11 @@ function clean(v: string | null | undefined): string {
   return s === "0" ? "" : s;
 }
 
+/** Recorta a la longitud del char(n)/varchar(n) destino. */
+function fit(v: string | null | undefined, max: number): string {
+  return (v ?? "").trim().slice(0, max);
+}
+
 export const CLIENTS_PAGE_SIZE = 25;
 
 /** WHERE de búsqueda (nombre / NIT / email). Vacío si no hay término. */
@@ -266,4 +271,53 @@ export async function getErpClientDocs(nit: string, tipodcto: string): Promise<E
     valor: Number(r.valor ?? 0),
     orden: r.orden || "",
   }));
+}
+
+/**
+ * Crea el cliente en el ERP (MTPROCLI) con HABILITADO='0' si el NIT aún no
+ * existe (idempotente por PK). INSERT directo: MTPROCLI no tiene triggers ni
+ * columnas obligatorias sin default, y las FKs se satisfacen con sus valores por
+ * defecto (VENDEDOR/CANAL/CIUDAD='0', PAIS='169', …). Devuelve created=false si
+ * el NIT ya existía en el ERP. `esProspecto` marca ISPROSPECT.
+ */
+export async function insertErpClient(c: {
+  nit: string;
+  nombre: string;
+  esEmpresa: boolean;
+  nombres?: string | null;
+  apellidos?: string | null;
+  email?: string | null;
+  telefono?: string | null;
+  direccion?: string | null;
+  esProspecto: boolean;
+}): Promise<{ created: boolean }> {
+  const pool = await getErpPool();
+  const res = await pool
+    .request()
+    .input("nit", sql.Char(15), fit(c.nit, 15))
+    .input("nombre", sql.VarChar(200), fit(c.nombre, 200))
+    .input("nom1", sql.Char(30), fit(c.esEmpresa ? c.nombre : c.nombres, 30))
+    .input("ape1", sql.Char(30), fit(c.esEmpresa ? "" : c.apellidos, 30))
+    .input("email", sql.VarChar(250), fit(c.email, 250))
+    .input("tel", sql.Char(30), fit(c.telefono, 30))
+    .input("dir", sql.Char(250), fit(c.direccion, 250))
+    .input("personanj", sql.Numeric(5, 0), c.esEmpresa ? 2 : 1)
+    .input("tipoiden", sql.Char(2), c.esEmpresa ? "01" : "02")
+    .input("isprospect", sql.Bit, c.esProspecto ? 1 : 0)
+    .input("fecha", sql.DateTime, new Date())
+    .query(`
+      IF NOT EXISTS (SELECT 1 FROM MTPROCLI WHERE NIT = @nit)
+      BEGIN
+        INSERT INTO MTPROCLI
+          (NIT, NOMBRE, NOMBRE1, APELLIDO1, EMAIL, TEL1, DIRECCION,
+           PERSONANJ, TIPOIDEN, ESCLIENTE, ESPROVEE, HABILITADO,
+           ISPROSPECT, FECHAING, FECING, PASSWORDIN)
+        VALUES
+          (@nit, @nombre, @nom1, @ape1, @email, @tel, @dir,
+           @personanj, @tipoiden, 'S', 'N', '0',
+           @isprospect, @fecha, @fecha, 'JEPHUB');
+        SELECT CAST(1 AS int) AS created;
+      END
+      ELSE SELECT CAST(0 AS int) AS created;`);
+  return { created: Number(res.recordset[0]?.created ?? 0) === 1 };
 }

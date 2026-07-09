@@ -201,8 +201,12 @@ export function ClientForm({
               ))}
             </select>
           </Field>
-          <Field label="Número Documento">
-            <Input value={f.numeroDocumento ?? ""} onChange={(e) => set("numeroDocumento", e.target.value)} />
+          <Field label={editing ? "Número Documento" : "Número Documento (NIT) *"}>
+            <Input
+              required={!editing}
+              value={f.numeroDocumento ?? ""}
+              onChange={(e) => set("numeroDocumento", e.target.value)}
+            />
           </Field>
         </div>
       </Card>

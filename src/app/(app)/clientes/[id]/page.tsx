@@ -111,10 +111,11 @@ export default async function ClienteFichaPage({
   const canCreateOpp = user.ability.can("create", "opportunities");
   const { id } = await params;
 
-  // El listado sale del ERP y usa el NIT (empieza por dígito) como id; los cuid
-  // de Prisma empiezan por letra. La ficha del ERP es híbrida: datos del ERP +
-  // oportunidades/actividad/archivos de PostgreSQL (relación por NIT).
-  if (/^\d/.test(id)) {
+  // El listado sale del ERP y usa el NIT como id; la ficha CRM local usa el cuid
+  // de Prisma (patrón `c` + 24 alfanuméricos). Todo lo que NO sea un cuid se trata
+  // como NIT → ficha híbrida del ERP (datos del ERP + oportunidades/actividad/
+  // archivos de PostgreSQL, relación por NIT).
+  if (!/^c[a-z0-9]{24}$/.test(id)) {
     return <ErpClientFicha nit={id} companyId={user.companyId} canCreateOpp={canCreateOpp} />;
   }
 
