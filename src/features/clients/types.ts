@@ -58,6 +58,7 @@ export type ErpClientDetail = {
   ciudad: string;
   web: string;
   asesor: string;
+  codven: string;
   canal: string;
   esProveedor: boolean;
   habilitado: boolean;

@@ -116,7 +116,15 @@ export default async function ClienteFichaPage({
   // como NIT → ficha híbrida del ERP (datos del ERP + oportunidades/actividad/
   // archivos de PostgreSQL, relación por NIT).
   if (!/^c[a-z0-9]{24}$/.test(id)) {
-    return <ErpClientFicha nit={id} companyId={user.companyId} canCreateOpp={canCreateOpp} />;
+    return (
+      <ErpClientFicha
+        nit={id}
+        companyId={user.companyId}
+        canCreateOpp={canCreateOpp}
+        // Un Asesor solo puede abrir clientes de sus propios codven.
+        allowedCodvens={user.roleName === "Asesor" ? user.codvens : undefined}
+      />
+    );
   }
 
   const c = await db.client.findFirst({

@@ -20,9 +20,13 @@ export default async function ClientesPage({
   const q = sp.q?.trim() ?? "";
   const page = Math.max(1, Number(sp.page) || 1);
 
+  // Alcance por rol: un Asesor solo ve los clientes cuyo VENDEDOR (MTPROCLI)
+  // sea uno de sus codven; admin y demás roles ven todo.
+  const codvens = user.roleName === "Asesor" ? user.codvens : undefined;
+
   const [{ rows, total }, stats] = await Promise.all([
-    getErpClients({ q, page, pageSize: CLIENTS_PAGE_SIZE }),
-    getErpClientStats(q),
+    getErpClients({ q, page, pageSize: CLIENTS_PAGE_SIZE, codvens }),
+    getErpClientStats(q, codvens),
   ]);
 
   return (

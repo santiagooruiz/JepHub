@@ -122,13 +122,21 @@ export async function ErpClientFicha({
   nit,
   companyId,
   canCreateOpp,
+  allowedCodvens,
 }: {
   nit: string;
   companyId: string;
   canCreateOpp: boolean;
+  /** Alcance por asesor: si viene, el cliente debe pertenecer a uno de estos codven. */
+  allowedCodvens?: string[];
 }) {
   const erp = await getErpClientByNit(nit);
   if (!erp) notFound();
+
+  // Rol Asesor: no puede abrir clientes de otro asesor (ni por URL directa).
+  if (allowedCodvens !== undefined && !allowedCodvens.includes(erp.codven)) {
+    notFound();
+  }
 
   const [cartera, cotizaciones, pedidos, anchor, param] = await Promise.all([
     getErpClientCartera(nit),

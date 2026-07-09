@@ -44,11 +44,29 @@ function buildSearch(request: sql.Request, q: string): string {
   return "AND (C.NOMBRE LIKE @q OR C.NIT LIKE @q OR C.EMAIL LIKE @q)";
 }
 
+/**
+ * WHERE de alcance por asesor: limita a clientes cuyo MTPROCLI.VENDEDOR esté en
+ * los codven del usuario (rol Asesor). `undefined` = sin restricción (admin).
+ * Un asesor sin codven configurado no ve clientes (1=0).
+ */
+function buildCodvenScope(request: sql.Request, codvens?: string[]): string {
+  if (codvens === undefined) return "";
+  const clean = [...new Set(codvens.map((c) => c.trim()).filter(Boolean))];
+  if (clean.length === 0) return "AND 1 = 0";
+  const placeholders = clean.map((c, i) => {
+    request.input(`cv${i}`, sql.Char(15), c);
+    return `@cv${i}`;
+  });
+  return `AND C.VENDEDOR IN (${placeholders.join(", ")})`;
+}
+
 /** Página de clientes del ERP + total de coincidencias (para la paginación). */
 export async function getErpClients(opts: {
   q?: string;
   page?: number;
   pageSize?: number;
+  /** Alcance por asesor (rol Asesor): solo clientes con VENDEDOR en estos codven. */
+  codvens?: string[];
 }): Promise<{ rows: ErpClientRow[]; total: number }> {
   const pool = await getErpPool();
   const page = Math.max(1, opts.page ?? 1);
@@ -60,6 +78,7 @@ export async function getErpClients(opts: {
     .input("offset", sql.Int, offset)
     .input("size", sql.Int, pageSize);
   const filtro = buildSearch(request, opts.q ?? "");
+  const scope = buildCodvenScope(request, opts.codvens);
 
   // COUNT(*) OVER() devuelve el total del set filtrado en la misma consulta.
   const res = await request.query(`
@@ -76,7 +95,7 @@ export async function getErpClients(opts: {
       COUNT(*) OVER()                  AS total
     FROM MTPROCLI C
     LEFT JOIN VENDEN V ON V.CODVEN = C.VENDEDOR
-    WHERE C.ESCLIENTE = 'S' ${filtro}
+    WHERE C.ESCLIENTE = 'S' ${filtro} ${scope}
     ORDER BY C.FECHAING DESC, C.NIT
     OFFSET @offset ROWS FETCH NEXT @size ROWS ONLY`);
 
@@ -95,11 +114,15 @@ export async function getErpClients(opts: {
   return { rows, total };
 }
 
-/** Totales para las tarjetas de resumen (respetan el término de búsqueda). */
-export async function getErpClientStats(q?: string): Promise<ErpClientStats> {
+/** Totales para las tarjetas de resumen (respetan búsqueda y alcance por asesor). */
+export async function getErpClientStats(
+  q?: string,
+  codvens?: string[]
+): Promise<ErpClientStats> {
   const pool = await getErpPool();
   const request = pool.request();
   const filtro = buildSearch(request, q ?? "");
+  const scope = buildCodvenScope(request, codvens);
   const res = await request.query(`
     SELECT
       COUNT(*)                                                    AS total,
@@ -107,7 +130,7 @@ export async function getErpClientStats(q?: string): Promise<ErpClientStats> {
       SUM(CASE WHEN C.PERSONANJ <> 2 OR C.PERSONANJ IS NULL THEN 1 ELSE 0 END) AS personas,
       SUM(CASE WHEN C.ISPROSPECT = 1 THEN 1 ELSE 0 END)          AS prospectos
     FROM MTPROCLI C
-    WHERE C.ESCLIENTE = 'S' ${filtro}`);
+    WHERE C.ESCLIENTE = 'S' ${filtro} ${scope}`);
   const r = res.recordset[0] ?? {};
   return {
     total: Number(r.total ?? 0),
@@ -194,6 +217,7 @@ export async function getErpClientByNit(nit: string): Promise<ErpClientDetail | 
         LTRIM(RTRIM(COALESCE(NULLIF(LTRIM(RTRIM(CD.NOMBRE)), ''), C.CIUDADPRV))) AS ciudad,
         LTRIM(RTRIM(C.PAGINAWEB))  AS web,
         LTRIM(RTRIM(V.NOMBRE))     AS asesor,
+        LTRIM(RTRIM(C.VENDEDOR))   AS codven,
         LTRIM(RTRIM(CN.NOMBRE))    AS canal,
         C.ESPROVEE                 AS esprovee,
         LTRIM(RTRIM(C.HABILITADO)) AS habilitado,
@@ -235,6 +259,7 @@ export async function getErpClientByNit(nit: string): Promise<ErpClientDetail | 
     ciudad: clean(r.ciudad),
     web: r.web || "",
     asesor: r.asesor || "",
+    codven: clean(r.codven),
     canal: canal === "NO ASIGNADO" || canal === "SIN DATOS" ? "" : canal,
     esProveedor: r.esprovee === "S",
     habilitado: r.habilitado === "S" || r.habilitado === "1",
