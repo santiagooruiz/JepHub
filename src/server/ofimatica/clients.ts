@@ -117,6 +117,17 @@ export async function getErpClientStats(q?: string): Promise<ErpClientStats> {
   };
 }
 
+/** Asesores activos del ERP (VENDEN, HABILITADO=1) para asignar a un cliente. */
+export async function getErpAsesores(): Promise<{ codven: string; nombre: string }[]> {
+  const pool = await getErpPool();
+  const res = await pool.request().query(`
+    SELECT LTRIM(RTRIM(CODVEN)) AS codven, LTRIM(RTRIM(NOMBRE)) AS nombre
+    FROM VENDEN
+    WHERE HABILITADO = 1 AND LTRIM(RTRIM(CODVEN)) NOT IN ('', '0')
+    ORDER BY NOMBRE`);
+  return res.recordset.map((r) => ({ codven: r.codven, nombre: r.nombre }));
+}
+
 // ─────────────────────────── Detalle del cliente ───────────────────────────
 
 /** Arma la lista de contactos desde los campos ZCONTAC1..4 de MTPROCLI. */
@@ -290,6 +301,8 @@ export async function insertErpClient(c: {
   telefono?: string | null;
   direccion?: string | null;
   esProspecto: boolean;
+  /** Asesor del ERP (VENDEN.CODVEN). Vacío → '0' (VARIOS). */
+  codven?: string | null;
 }): Promise<{ created: boolean }> {
   const pool = await getErpPool();
   const res = await pool
@@ -304,6 +317,7 @@ export async function insertErpClient(c: {
     .input("personanj", sql.Numeric(5, 0), c.esEmpresa ? 2 : 1)
     .input("tipoiden", sql.Char(2), c.esEmpresa ? "01" : "02")
     .input("isprospect", sql.Bit, c.esProspecto ? 1 : 0)
+    .input("vendedor", sql.Char(15), fit(c.codven, 15) || "0")
     .input("fecha", sql.DateTime, new Date())
     .query(`
       IF NOT EXISTS (SELECT 1 FROM MTPROCLI WHERE NIT = @nit)
@@ -311,11 +325,11 @@ export async function insertErpClient(c: {
         INSERT INTO MTPROCLI
           (NIT, NOMBRE, NOMBRE1, APELLIDO1, EMAIL, TEL1, DIRECCION,
            PERSONANJ, TIPOIDEN, ESCLIENTE, ESPROVEE, HABILITADO,
-           ISPROSPECT, FECHAING, FECING, PASSWORDIN)
+           ISPROSPECT, VENDEDOR, FECHAING, FECING, PASSWORDIN)
         VALUES
           (@nit, @nombre, @nom1, @ape1, @email, @tel, @dir,
            @personanj, @tipoiden, 'S', 'N', '0',
-           @isprospect, @fecha, @fecha, 'JEPHUB');
+           @isprospect, @vendedor, @fecha, @fecha, 'JEPHUB');
         SELECT CAST(1 AS int) AS created;
       END
       ELSE SELECT CAST(0 AS int) AS created;`);

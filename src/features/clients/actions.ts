@@ -36,7 +36,7 @@ const clientSchema = z.object({
   sectorId: nullableStr,
   subSectorId: nullableStr,
   canal: nullableStr,
-  advisorId: nullableStr,
+  codven: nullableStr,
 });
 
 export async function saveClient(input: unknown): Promise<ActionResult> {
@@ -91,6 +91,7 @@ export async function saveClient(input: unknown): Promise<ActionResult> {
           telefono: d.telefono,
           direccion: d.direccion,
           esProspecto: d.estado === "Prospecto",
+          codven: d.codven,
         });
       } catch (err) {
         const message = err instanceof Error ? err.message : "Error desconocido";

@@ -10,7 +10,7 @@ import { Card } from "@/components/ui/card";
 import { saveClient } from "./actions";
 
 export type ClientOptions = {
-  advisors: { id: string; name: string }[];
+  asesores: { codven: string; nombre: string }[];
   priceLists: { id: string; name: string }[];
   sectors: { id: string; name: string; subsectors: { id: string; name: string }[] }[];
   channels: string[];
@@ -37,7 +37,7 @@ export type ClientEditing = {
   sectorId: string | null;
   subSectorId: string | null;
   canal: string | null;
-  advisorId: string | null;
+  codven: string | null;
 };
 
 const ESTADOS = ["Prospecto", "Gestión Cotización", "Cliente", "Gestión Perdida"];
@@ -89,7 +89,7 @@ export function ClientForm({
     sectorId: editing?.sectorId ?? "",
     subSectorId: editing?.subSectorId ?? "",
     canal: editing?.canal ?? "",
-    advisorId: editing?.advisorId ?? "",
+    codven: editing?.codven ?? "",
   });
   const [error, setError] = React.useState<string | null>(null);
   const [pending, start] = React.useTransition();
@@ -136,14 +136,14 @@ export function ClientForm({
           </Field>
           <Field label="Asignar Asesor">
             <select
-              value={f.advisorId ?? ""}
-              onChange={(e) => set("advisorId", e.target.value)}
+              value={f.codven ?? ""}
+              onChange={(e) => set("codven", e.target.value)}
               className={selectCls}
             >
               <option value="">Seleccione</option>
-              {options.advisors.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name}
+              {options.asesores.map((a) => (
+                <option key={a.codven} value={a.codven}>
+                  {a.nombre}
                 </option>
               ))}
             </select>

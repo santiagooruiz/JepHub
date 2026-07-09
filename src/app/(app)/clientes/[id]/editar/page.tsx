@@ -44,7 +44,7 @@ export default async function EditarClientePage({
     sectorId: c.sectorId,
     subSectorId: c.subSectorId,
     canal: c.canal,
-    advisorId: c.advisorId,
+    codven: c.codven,
   };
 
   return (

@@ -199,6 +199,7 @@ model Client {
   saldoCartera         Decimal?   @db.Decimal(15, 2)
   advisorId            String?
   advisor              User?      @relation("ClientAdvisor", fields: [advisorId], references: [id])
+  codven               String?    // asesor del ERP (VENDEN.CODVEN)
   ultimaInteraccion    DateTime?
   createdAt            DateTime   @default(now())
   updatedAt            DateTime   @updatedAt
