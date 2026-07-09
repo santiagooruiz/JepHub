@@ -1,12 +1,10 @@
 import Link from "next/link";
-import { ChevronLeft, Pencil, UserPlus } from "lucide-react";
+import { ChevronLeft, UserPlus } from "lucide-react";
 
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/guard";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { UserStatusToggle } from "@/features/users/status-toggle";
+import { UsersManager, type UserRow, type RoleCard } from "@/features/users/users-manager";
 
 export const dynamic = "force-dynamic";
 
@@ -21,13 +19,6 @@ const ROLE_ORDER = [
   "Consultor",
 ];
 
-function StatusBadge({ status }: { status: string }) {
-  if (status === "ACTIVE") return <Badge variant="success">ACTIVO</Badge>;
-  if (status === "PASSWORD_CHANGE")
-    return <Badge variant="default">CAMBIO DE CONTRASEÑA</Badge>;
-  return <Badge variant="muted">INACTIVO</Badge>;
-}
-
 export default async function UsuariosPage() {
   const user = await requirePermission("view", "users");
   const companyId = user.companyId;
@@ -41,14 +32,25 @@ export default async function UsuariosPage() {
     }),
     db.user.findMany({
       where: { companyId },
-      include: { role: true },
+      include: { role: { select: { id: true, name: true } } },
       orderBy: { name: "asc" },
     }),
   ]);
 
-  roles.sort(
-    (a, b) => ROLE_ORDER.indexOf(a.name) - ROLE_ORDER.indexOf(b.name)
-  );
+  const roleCards: RoleCard[] = roles
+    .slice()
+    .sort((a, b) => ROLE_ORDER.indexOf(a.name) - ROLE_ORDER.indexOf(b.name))
+    .map((r) => ({ id: r.id, name: r.name, count: r._count.users }));
+
+  const userRows: UserRow[] = users.map((u) => ({
+    id: u.id,
+    name: u.name,
+    email: u.email,
+    cargoActual: u.cargoActual,
+    roleId: u.roleId,
+    roleName: u.role?.name ?? null,
+    status: u.status,
+  }));
 
   return (
     <div>
@@ -63,7 +65,7 @@ export default async function UsuariosPage() {
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">Usuarios</h1>
             <p className="text-sm text-muted-foreground">
-              {users.length} usuarios · cupos por rol
+              {users.length} usuarios · filtra por rol
             </p>
           </div>
           {canCreate && (
@@ -76,75 +78,12 @@ export default async function UsuariosPage() {
         </div>
       </div>
 
-      {/* Cupos por rol (usados / límite) */}
-      <div
-        className="mb-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5"
-        style={{ gap: "var(--card-gap)" }}
-      >
-        {roles.map((r) => (
-          <Card key={r.id} className="p-3">
-            <p className="truncate text-sm text-muted-foreground" title={r.name}>
-              {r.name}
-            </p>
-            <p className="tabular mt-1 text-lg font-bold">
-              {r._count.users}
-              <span className="text-sm font-normal text-muted-foreground">
-                {" "}
-                / {r.seatLimit ?? "∞"}
-              </span>
-            </p>
-          </Card>
-        ))}
-      </div>
-
-      {/* Tabla de usuarios */}
-      <Card className="overflow-x-auto">
-        <table className="w-full border-collapse text-sm">
-          <thead>
-            <tr className="border-b bg-muted/40 text-left">
-              <th className="px-3 py-2 font-medium">Nombre</th>
-              <th className="px-3 py-2 font-medium">Email</th>
-              <th className="px-3 py-2 font-medium">Cargo</th>
-              <th className="px-3 py-2 font-medium">Perfil</th>
-              <th className="px-3 py-2 font-medium">Estado</th>
-              {canEdit && <th className="px-3 py-2 font-medium">Acciones</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {users.map((u) => (
-              <tr key={u.id} className="border-b last:border-0 hover:bg-muted/20">
-                <td className="px-3 py-2 font-medium">{u.name}</td>
-                <td className="px-3 py-2 text-muted-foreground">{u.email}</td>
-                <td className="px-3 py-2 text-muted-foreground">
-                  {u.cargoActual ?? "—"}
-                </td>
-                <td className="px-3 py-2">{u.role?.name ?? "—"}</td>
-                <td className="px-3 py-2">
-                  <StatusBadge status={u.status} />
-                </td>
-                {canEdit && (
-                  <td className="px-3 py-2">
-                    <div className="flex items-center gap-1">
-                      <Link
-                        href={`/configuracion/usuarios/${u.id}/editar`}
-                        className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent"
-                        aria-label="Editar usuario"
-                      >
-                        <Pencil className="size-4" />
-                      </Link>
-                      {u.id === user.id ? (
-                        <span className="text-xs text-muted-foreground">Tú</span>
-                      ) : (
-                        <UserStatusToggle userId={u.id} status={u.status} />
-                      )}
-                    </div>
-                  </td>
-                )}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </Card>
+      <UsersManager
+        roles={roleCards}
+        users={userRows}
+        canEdit={canEdit}
+        currentUserId={user.id}
+      />
     </div>
   );
 }
