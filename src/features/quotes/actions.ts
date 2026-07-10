@@ -7,6 +7,8 @@ import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/guard";
 import { getErpClientByNit } from "@/server/ofimatica/clients";
 import type { ActionResult } from "@/features/config/actions";
+import { logAutoActivity } from "@/features/activity/log";
+import { clientDisplayName } from "@/features/clients/queries";
 import { QUOTE_ESTADOS, IVA_RATE } from "./types";
 
 type SaveResult = { ok: true; id: string } | { ok: false; error: string };
@@ -105,7 +107,14 @@ export async function saveQuote(input: unknown): Promise<SaveResult> {
 
   const client = await db.client.findFirst({
     where: { id: d.clientId, companyId: user.companyId },
-    select: { id: true },
+    select: {
+      id: true,
+      personType: true,
+      nombres: true,
+      apellidos: true,
+      razonSocial: true,
+      nombreComercial: true,
+    },
   });
   if (!client) return { ok: false, error: "Cliente no encontrado." };
 
@@ -148,7 +157,7 @@ export async function saveQuote(input: unknown): Promise<SaveResult> {
   if (d.id) {
     const existing = await db.quote.findFirst({
       where: { id: d.id, companyId: user.companyId },
-      select: { id: true },
+      select: { id: true, numero: true },
     });
     if (!existing) return { ok: false, error: "Cotización no encontrada." };
     await db.$transaction([
@@ -159,6 +168,15 @@ export async function saveQuote(input: unknown): Promise<SaveResult> {
       }),
     ]);
     quoteId = d.id;
+    await logAutoActivity({
+      companyId: user.companyId,
+      userId: user.id,
+      entityType: "QUOTE",
+      accion: `Actualizó la cotización N° ${existing.numero}`,
+      clientId: d.clientId,
+      opportunityId: d.opportunityId,
+      quoteId,
+    });
   } else {
     const last = await db.quote.findFirst({
       where: { companyId: user.companyId },
@@ -175,6 +193,15 @@ export async function saveQuote(input: unknown): Promise<SaveResult> {
       },
     });
     quoteId = created.id;
+    await logAutoActivity({
+      companyId: user.companyId,
+      userId: user.id,
+      entityType: "QUOTE",
+      accion: `Registró la cotización N° ${created.numero} al cliente ${clientDisplayName(client)}`,
+      clientId: d.clientId,
+      opportunityId: d.opportunityId,
+      quoteId,
+    });
 
     // El estado de la oportunidad no se edita a mano: al crear su primera
     // cotización pasa de "No Cotizada" a "Cotizada".
@@ -258,6 +285,16 @@ export async function duplicateQuote(id: string): Promise<SaveResult> {
     });
   }
 
+  await logAutoActivity({
+    companyId: user.companyId,
+    userId: user.id,
+    entityType: "QUOTE",
+    accion: `Registró la cotización N° ${created.numero} (duplicado de la N° ${source.numero})`,
+    clientId: source.clientId,
+    opportunityId: source.opportunityId,
+    quoteId: created.id,
+  });
+
   revalidatePath("/cotizaciones");
   if (source.opportunityId) revalidatePath(`/oportunidades/${source.opportunityId}`);
   return { ok: true, id: created.id };
@@ -265,9 +302,24 @@ export async function duplicateQuote(id: string): Promise<SaveResult> {
 
 export async function deleteQuote(id: string): Promise<ActionResult> {
   const user = await requirePermission("delete", "quotes");
-  await db.quote.updateMany({
-    where: { id, companyId: user.companyId },
+  const quote = await db.quote.findFirst({
+    where: { id, companyId: user.companyId, deletedAt: null },
+    select: { id: true, numero: true, clientId: true, opportunityId: true },
+  });
+  if (!quote) return { ok: false, error: "Cotización no encontrada." };
+
+  await db.quote.update({
+    where: { id: quote.id },
     data: { deletedAt: new Date() },
+  });
+  await logAutoActivity({
+    companyId: user.companyId,
+    userId: user.id,
+    entityType: "QUOTE",
+    accion: `Eliminó la cotización N° ${quote.numero}`,
+    clientId: quote.clientId,
+    opportunityId: quote.opportunityId,
+    quoteId: quote.id,
   });
   revalidatePath("/cotizaciones");
   return { ok: true };
@@ -281,10 +333,24 @@ export async function updateQuoteState(
   if (!QUOTE_ESTADOS.includes(estado)) {
     return { ok: false, error: "Estado inválido." };
   }
-  await db.quote.updateMany({
-    where: { id, companyId: user.companyId },
-    data: { estado },
+  const quote = await db.quote.findFirst({
+    where: { id, companyId: user.companyId, deletedAt: null },
+    select: { id: true, numero: true, clientId: true, opportunityId: true, estado: true },
   });
+  if (!quote) return { ok: false, error: "Cotización no encontrada." };
+
+  await db.quote.update({ where: { id: quote.id }, data: { estado } });
+  if (estado !== quote.estado) {
+    await logAutoActivity({
+      companyId: user.companyId,
+      userId: user.id,
+      entityType: "QUOTE",
+      accion: `Cambió el estado de la cotización N° ${quote.numero} a ${estado}`,
+      clientId: quote.clientId,
+      opportunityId: quote.opportunityId,
+      quoteId: quote.id,
+    });
+  }
   revalidatePath(`/cotizaciones/${id}`);
   revalidatePath("/cotizaciones");
   return { ok: true };

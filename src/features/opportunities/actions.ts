@@ -8,6 +8,8 @@ import { requirePermission } from "@/lib/guard";
 import { isAsesor } from "@/lib/auth";
 import { advisorScope } from "@/lib/scope";
 import type { ActionResult } from "@/features/config/actions";
+import { logAutoActivity } from "@/features/activity/log";
+import { clientDisplayName } from "@/features/clients/queries";
 import { OPP_ESTADOS } from "./types";
 
 const nullableStr = z
@@ -42,7 +44,15 @@ export async function saveOpportunity(input: unknown): Promise<ActionResult> {
 
   const client = await db.client.findFirst({
     where: { id: clientId, companyId: user.companyId },
-    select: { id: true, advisorId: true },
+    select: {
+      id: true,
+      advisorId: true,
+      personType: true,
+      nombres: true,
+      apellidos: true,
+      razonSocial: true,
+      nombreComercial: true,
+    },
   });
   if (!client) return { ok: false, error: "Cliente no encontrado." };
 
@@ -61,25 +71,43 @@ export async function saveOpportunity(input: unknown): Promise<ActionResult> {
   };
 
   if (id) {
-    await db.opportunity.updateMany({
+    const { count } = await db.opportunity.updateMany({
       where: { id, companyId: user.companyId, ...advisorScope(user) },
       // Al editar solo se re-sincroniza el asesor si el cliente tiene uno
       // asignado (no se pisa con null un dueño ya existente).
       data: { ...data, ...(client.advisorId ? { advisorId: client.advisorId } : {}) },
     });
+    if (count) {
+      await logAutoActivity({
+        companyId: user.companyId,
+        userId: user.id,
+        entityType: "OPPORTUNITY",
+        accion: `Actualizó la oportunidad ${data.nombre}`,
+        clientId,
+        opportunityId: id,
+      });
+    }
   } else {
     const last = await db.opportunity.findFirst({
       where: { companyId: user.companyId },
       orderBy: { numero: "desc" },
       select: { numero: true },
     });
-    await db.opportunity.create({
+    const created = await db.opportunity.create({
       data: {
         ...data,
         advisorId,
         companyId: user.companyId,
         numero: (last?.numero ?? 0) + 1,
       },
+    });
+    await logAutoActivity({
+      companyId: user.companyId,
+      userId: user.id,
+      entityType: "OPPORTUNITY",
+      accion: `Registró la oportunidad ${created.nombre} al cliente ${clientDisplayName(client)}`,
+      clientId,
+      opportunityId: created.id,
     });
   }
 
@@ -89,9 +117,23 @@ export async function saveOpportunity(input: unknown): Promise<ActionResult> {
 
 export async function deleteOpportunity(id: string): Promise<ActionResult> {
   const user = await requirePermission("delete", "opportunities");
-  await db.opportunity.updateMany({
-    where: { id, companyId: user.companyId, ...advisorScope(user) },
+  const opp = await db.opportunity.findFirst({
+    where: { id, companyId: user.companyId, deletedAt: null, ...advisorScope(user) },
+    select: { id: true, nombre: true, numero: true, clientId: true },
+  });
+  if (!opp) return { ok: false, error: "Oportunidad no encontrada." };
+
+  await db.opportunity.update({
+    where: { id: opp.id },
     data: { deletedAt: new Date() },
+  });
+  await logAutoActivity({
+    companyId: user.companyId,
+    userId: user.id,
+    entityType: "OPPORTUNITY",
+    accion: `Eliminó la oportunidad N° ${opp.numero} ${opp.nombre}`,
+    clientId: opp.clientId,
+    opportunityId: opp.id,
   });
   revalidatePath("/oportunidades");
   return { ok: true };
@@ -106,10 +148,23 @@ export async function updateOpportunityStage(
   if (!OPP_ESTADOS.includes(estado)) {
     return { ok: false, error: "Estado inválido." };
   }
-  await db.opportunity.updateMany({
-    where: { id, companyId: user.companyId, ...advisorScope(user) },
-    data: { estado },
+  const opp = await db.opportunity.findFirst({
+    where: { id, companyId: user.companyId, deletedAt: null, ...advisorScope(user) },
+    select: { id: true, nombre: true, clientId: true, estado: true },
   });
+  if (!opp) return { ok: false, error: "Oportunidad no encontrada." };
+
+  await db.opportunity.update({ where: { id: opp.id }, data: { estado } });
+  if (estado !== opp.estado) {
+    await logAutoActivity({
+      companyId: user.companyId,
+      userId: user.id,
+      entityType: "OPPORTUNITY",
+      accion: `Cambió el estado de la oportunidad ${opp.nombre} a ${estado}`,
+      clientId: opp.clientId,
+      opportunityId: opp.id,
+    });
+  }
   revalidatePath("/oportunidades");
   return { ok: true };
 }
