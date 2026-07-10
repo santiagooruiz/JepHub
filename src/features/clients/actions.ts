@@ -201,6 +201,8 @@ export async function ensureClientAnchor(
 export async function exportErpClients(input: {
   q?: string;
   tipo?: string;
+  ciudad?: string;
+  asesor?: string;
   sort?: string;
   dir?: string;
 }): Promise<ActionResult & { rows?: ErpClientRow[] }> {
@@ -214,6 +216,10 @@ export async function exportErpClients(input: {
       tipo: ["empresas", "personas", "prospectos"].includes(input.tipo ?? "")
         ? (input.tipo as ErpClientTipoFiltro)
         : undefined,
+      ciudad: input.ciudad,
+      // El filtro por asesor específico es del admin; el rol Asesor ya viene
+      // limitado por su alcance (codvens).
+      vendedor: isAsesor(user) ? undefined : input.asesor,
       sort: ERP_CLIENT_SORT_KEYS.includes(input.sort as ErpClientSortKey)
         ? (input.sort as ErpClientSortKey)
         : undefined,

@@ -101,6 +101,22 @@ function buildTipoFilter(tipo?: ErpClientTipoFiltro): string {
   }
 }
 
+/** WHERE por ciudad exacta (CIUDADPRV del maestro). */
+function buildCiudadFilter(request: sql.Request, ciudad?: string): string {
+  const c = (ciudad ?? "").trim();
+  if (!c) return "";
+  request.input("ciudad", sql.VarChar(60), c);
+  return "AND LTRIM(RTRIM(C.CIUDADPRV)) = @ciudad";
+}
+
+/** WHERE por asesor específico (VENDEDOR = codven); filtro del admin. */
+function buildVendedorFilter(request: sql.Request, vendedor?: string): string {
+  const v = (vendedor ?? "").trim();
+  if (!v) return "";
+  request.input("vendedor", sql.Char(15), v);
+  return "AND C.VENDEDOR = @vendedor";
+}
+
 /**
  * WHERE de alcance por asesor: limita a clientes cuyo MTPROCLI.VENDEDOR esté en
  * los codven del usuario (rol Asesor). `undefined` = sin restricción (admin).
@@ -126,6 +142,9 @@ export async function getErpClients(opts: {
   codvens?: string[];
   /** Filtro de las tarjetas: empresas / personas / prospectos. */
   tipo?: ErpClientTipoFiltro;
+  /** Filtros de los selects: ciudad exacta y asesor (codven). */
+  ciudad?: string;
+  vendedor?: string;
   /** Ordenamiento por columna (whitelist) y dirección. */
   sort?: ErpClientSortKey;
   dir?: "asc" | "desc";
@@ -142,13 +161,15 @@ export async function getErpClients(opts: {
   const filtro = buildSearch(request, opts.q ?? "");
   const scope = buildCodvenScope(request, opts.codvens);
   const tipoFiltro = buildTipoFilter(opts.tipo);
+  const ciudadFiltro = buildCiudadFilter(request, opts.ciudad);
+  const vendFiltro = buildVendedorFilter(request, opts.vendedor);
 
   // COUNT(*) OVER() devuelve el total del set filtrado en la misma consulta.
   const res = await request.query(`
     ${CLIENT_SELECT},
       COUNT(*) OVER()                  AS total
     ${CLIENT_FROM}
-    WHERE C.ESCLIENTE = 'S' ${filtro} ${scope} ${tipoFiltro}
+    WHERE C.ESCLIENTE = 'S' ${filtro} ${scope} ${tipoFiltro} ${ciudadFiltro} ${vendFiltro}
     ${buildOrderBy(opts.sort, opts.dir)}
     OFFSET @offset ROWS FETCH NEXT @size ROWS ONLY`);
 
@@ -192,6 +213,8 @@ export async function getErpClientsExport(opts: {
   q?: string;
   codvens?: string[];
   tipo?: ErpClientTipoFiltro;
+  ciudad?: string;
+  vendedor?: string;
   sort?: ErpClientSortKey;
   dir?: "asc" | "desc";
 }): Promise<ErpClientRow[]> {
@@ -200,24 +223,43 @@ export async function getErpClientsExport(opts: {
   const filtro = buildSearch(request, opts.q ?? "");
   const scope = buildCodvenScope(request, opts.codvens);
   const tipoFiltro = buildTipoFilter(opts.tipo);
+  const ciudadFiltro = buildCiudadFilter(request, opts.ciudad);
+  const vendFiltro = buildVendedorFilter(request, opts.vendedor);
 
   const res = await request.query(`
     ${CLIENT_SELECT.replace("SELECT", "SELECT TOP 20000")}
     ${CLIENT_FROM}
-    WHERE C.ESCLIENTE = 'S' ${filtro} ${scope} ${tipoFiltro}
+    WHERE C.ESCLIENTE = 'S' ${filtro} ${scope} ${tipoFiltro} ${ciudadFiltro} ${vendFiltro}
     ${buildOrderBy(opts.sort, opts.dir)}`);
   return res.recordset.map(mapClientRow);
 }
 
-/** Totales para las tarjetas de resumen (respetan búsqueda y alcance por asesor). */
-export async function getErpClientStats(
-  q?: string,
-  codvens?: string[]
-): Promise<ErpClientStats> {
+/** Ciudades distintas de los clientes (para el select de filtro), con alcance. */
+export async function getErpClientCiudades(codvens?: string[]): Promise<string[]> {
   const pool = await getErpPool();
   const request = pool.request();
-  const filtro = buildSearch(request, q ?? "");
   const scope = buildCodvenScope(request, codvens);
+  const res = await request.query(`
+    SELECT DISTINCT LTRIM(RTRIM(C.CIUDADPRV)) AS ciudad
+    FROM MTPROCLI C
+    WHERE C.ESCLIENTE = 'S' AND LTRIM(RTRIM(C.CIUDADPRV)) NOT IN ('', '0') ${scope}
+    ORDER BY 1`);
+  return res.recordset.map((r) => r.ciudad as string);
+}
+
+/** Totales para las tarjetas (respetan búsqueda, alcance y filtros de select). */
+export async function getErpClientStats(opts: {
+  q?: string;
+  codvens?: string[];
+  ciudad?: string;
+  vendedor?: string;
+}): Promise<ErpClientStats> {
+  const pool = await getErpPool();
+  const request = pool.request();
+  const filtro = buildSearch(request, opts.q ?? "");
+  const scope = buildCodvenScope(request, opts.codvens);
+  const ciudadFiltro = buildCiudadFilter(request, opts.ciudad);
+  const vendFiltro = buildVendedorFilter(request, opts.vendedor);
   const res = await request.query(`
     SELECT
       COUNT(*)                                                    AS total,
@@ -225,7 +267,7 @@ export async function getErpClientStats(
       SUM(CASE WHEN C.PERSONANJ <> 2 OR C.PERSONANJ IS NULL THEN 1 ELSE 0 END) AS personas,
       SUM(CASE WHEN C.ISPROSPECT = 1 THEN 1 ELSE 0 END)          AS prospectos
     FROM MTPROCLI C
-    WHERE C.ESCLIENTE = 'S' ${filtro} ${scope}`);
+    WHERE C.ESCLIENTE = 'S' ${filtro} ${scope} ${ciudadFiltro} ${vendFiltro}`);
   const r = res.recordset[0] ?? {};
   return {
     total: Number(r.total ?? 0),

@@ -22,6 +22,9 @@ const STATS: { key: keyof ErpClientStats; label: string }[] = [
   { key: "prospectos", label: "Prospectos" },
 ];
 
+const selectCls =
+  "h-9 max-w-52 rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring";
+
 // Encabezados de la tabla; sortKey debe existir en el whitelist del servidor.
 const COLUMNS: { label: string; sortKey: string | null }[] = [
   { label: "Nombre", sortKey: "nombre" },
@@ -44,6 +47,10 @@ export function ErpClientsTable({
   tipo,
   sort,
   dir,
+  ciudad,
+  asesor,
+  ciudades,
+  asesores,
   stats,
 }: {
   rows: ErpClientRow[];
@@ -56,6 +63,12 @@ export function ErpClientsTable({
   /** Ordenamiento activo (columna del whitelist) o null. */
   sort: string | null;
   dir: "asc" | "desc";
+  /** Filtros de select activos. */
+  ciudad: string | null;
+  asesor: string | null;
+  /** Opciones de los selects; `asesores` vacío = ocultar (solo admin lo recibe). */
+  ciudades: string[];
+  asesores: { codven: string; nombre: string }[];
   stats: ErpClientStats;
 }) {
   const router = useRouter();
@@ -73,20 +86,20 @@ export function ErpClientsTable({
       tipo?: string | null;
       sort?: string | null;
       dir?: string;
+      ciudad?: string | null;
+      asesor?: string | null;
     }) => {
       const params = new URLSearchParams(searchParams.toString());
-      if (next.q !== undefined) {
-        if (next.q) params.set("q", next.q);
-        else params.delete("q");
-      }
-      if (next.tipo !== undefined) {
-        if (next.tipo) params.set("tipo", next.tipo);
-        else params.delete("tipo");
-      }
-      if (next.sort !== undefined) {
-        if (next.sort) params.set("sort", next.sort);
-        else params.delete("sort");
-      }
+      const setOrDelete = (key: string, value: string | null | undefined) => {
+        if (value === undefined) return;
+        if (value) params.set(key, value);
+        else params.delete(key);
+      };
+      setOrDelete("q", next.q);
+      setOrDelete("tipo", next.tipo);
+      setOrDelete("sort", next.sort);
+      setOrDelete("ciudad", next.ciudad);
+      setOrDelete("asesor", next.asesor);
       if (next.dir !== undefined) params.set("dir", next.dir);
       if (next.page !== undefined) params.set("page", String(next.page));
       startTransition(() => router.push(`${pathname}?${params.toString()}`));
@@ -154,16 +167,46 @@ export function ErpClientsTable({
         })}
       </div>
 
-      {/* Buscador + exportar */}
+      {/* Buscador + filtros + exportar */}
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="relative w-full max-w-sm">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={term}
-            onChange={(e) => setTerm(e.target.value)}
-            placeholder="Buscar por nombre, NIT o email…"
-            className="pl-8"
-          />
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative w-full max-w-sm">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={term}
+              onChange={(e) => setTerm(e.target.value)}
+              placeholder="Buscar por nombre, NIT o email…"
+              className="pl-8"
+            />
+          </div>
+          <select
+            value={ciudad ?? ""}
+            onChange={(e) => navigate({ ciudad: e.target.value || null, page: 1 })}
+            className={selectCls}
+            aria-label="Filtrar por ciudad"
+          >
+            <option value="">Todas las ciudades</option>
+            {ciudades.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+          {asesores.length > 0 && (
+            <select
+              value={asesor ?? ""}
+              onChange={(e) => navigate({ asesor: e.target.value || null, page: 1 })}
+              className={selectCls}
+              aria-label="Filtrar por asesor"
+            >
+              <option value="">Todos los asesores</option>
+              {asesores.map((a) => (
+                <option key={a.codven} value={a.codven}>
+                  {a.nombre}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
         <Button
           type="button"
@@ -176,6 +219,8 @@ export function ErpClientsTable({
               const res = await exportErpClients({
                 q,
                 tipo: tipo ?? undefined,
+                ciudad: ciudad ?? undefined,
+                asesor: asesor ?? undefined,
                 sort: sort ?? undefined,
                 dir,
               });
