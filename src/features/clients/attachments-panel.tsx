@@ -18,17 +18,23 @@ export type AttachmentItem = {
   createdAt: string;
 };
 
+const selectCls =
+  "h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring";
+
 export function AttachmentsPanel({
   clientId,
   opportunityId,
   attachments,
   anchor,
+  tipos,
 }: {
   clientId?: string;
   opportunityId?: string;
   attachments: AttachmentItem[];
   /** Cliente del ERP: crea/resuelve el ancla por NIT antes de guardar. */
   anchor?: { nit: string; nombre: string; esEmpresa: boolean };
+  /** Catálogo "Tipo Archivo" (parámetro `file_types`); sin él, texto libre. */
+  tipos?: string[];
 }) {
   const router = useRouter();
   const [tipo, setTipo] = React.useState("");
@@ -96,7 +102,27 @@ export function AttachmentsPanel({
   return (
     <div className="space-y-4">
       <form onSubmit={submit} className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        <Input placeholder="Tipo (ej. Orden de compra)" value={tipo} onChange={(e) => setTipo(e.target.value)} />
+        {tipos?.length ? (
+          <select
+            value={tipo}
+            onChange={(e) => setTipo(e.target.value)}
+            className={selectCls}
+            aria-label="Tipo de archivo"
+          >
+            <option value="">Tipo de archivo…</option>
+            {tipos.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <Input
+            placeholder="Tipo (ej. Orden de compra)"
+            value={tipo}
+            onChange={(e) => setTipo(e.target.value)}
+          />
+        )}
         <Input placeholder="Observaciones" value={obs} onChange={(e) => setObs(e.target.value)} />
         <Input
           className="sm:col-span-2"

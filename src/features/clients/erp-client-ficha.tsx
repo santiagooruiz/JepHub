@@ -3,6 +3,11 @@ import { notFound } from "next/navigation";
 import { ChevronLeft, Eye, Truck, Wallet } from "lucide-react";
 
 import { db } from "@/lib/db";
+import {
+  getParamValues,
+  ACTION_ACTIVITIES_FALLBACK,
+  FILE_TYPES_FALLBACK,
+} from "@/lib/params";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { TabsLite } from "@/components/ui/tabs-lite";
@@ -141,7 +146,7 @@ export async function ErpClientFicha({
     notFound();
   }
 
-  const [cartera, cotizaciones, pedidos, anchor, param] = await Promise.all([
+  const [cartera, cotizaciones, pedidos, anchor, acciones, tiposArchivo] = await Promise.all([
     getErpClientCartera(nit),
     getErpClientDocs(nit, "CV"),
     getErpClientDocs(nit, "PD"),
@@ -161,14 +166,9 @@ export async function ErpClientFicha({
         attachments: { orderBy: { createdAt: "desc" } },
       },
     }),
-    db.parameter.findUnique({
-      where: { companyId_key: { companyId, key: "action_activities" } },
-    }),
+    getParamValues(companyId, "action_activities", ACTION_ACTIVITIES_FALLBACK),
+    getParamValues(companyId, "file_types", FILE_TYPES_FALLBACK),
   ]);
-
-  const acciones = Array.isArray(param?.value)
-    ? (param!.value as { value?: string }[]).map((o) => o.value ?? "").filter(Boolean)
-    : ["Llamada", "Visita", "Email", "Observación"];
 
   const opps = (anchor?.opportunities ?? []).map((o) => ({
     id: o.id,
@@ -276,6 +276,7 @@ export async function ErpClientFicha({
             <div className="px-4 pb-4">
               <AttachmentsPanel
                 anchor={anchorInfo}
+                tipos={tiposArchivo}
                 attachments={(anchor?.attachments ?? []).map((a) => ({
                   id: a.id,
                   tipoArchivo: a.tipoArchivo,

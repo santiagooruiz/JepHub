@@ -5,10 +5,62 @@ import { z } from "zod";
 
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/guard";
+import { getErpClientByNit } from "@/server/ofimatica/clients";
 import type { ActionResult } from "@/features/config/actions";
 import { QUOTE_ESTADOS, IVA_RATE } from "./types";
 
 type SaveResult = { ok: true; id: string } | { ok: false; error: string };
+
+export type QuoteClientInfo = {
+  telefono: string;
+  email: string;
+  listaPrecio: string;
+  /** MTPROCLI.DIRECCION — dirección principal y default de "Dirección de envío". */
+  direccion: string;
+};
+
+/**
+ * Datos del cliente para el encabezado de la cotización (teléfono, email,
+ * lista de precio y dirección). La fuente de verdad es el ERP (MTPROCLI, por
+ * NIT); si el cliente no existe allí o el ERP no responde, cae a los campos
+ * del cliente local.
+ */
+export async function getQuoteClientInfo(
+  clientId: string
+): Promise<{ ok: true; info: QuoteClientInfo } | { ok: false; error: string }> {
+  const user = await requirePermission("view", "quotes");
+
+  const client = await db.client.findFirst({
+    where: { id: clientId, companyId: user.companyId, deletedAt: null },
+    select: {
+      telefono: true,
+      email: true,
+      direccion: true,
+      numeroDocumento: true,
+      priceList: { select: { name: true } },
+    },
+  });
+  if (!client) return { ok: false, error: "Cliente no encontrado." };
+
+  let erp = null;
+  if (client.numeroDocumento) {
+    try {
+      erp = await getErpClientByNit(client.numeroDocumento);
+    } catch {
+      // ERP fuera de línea: seguimos con los datos locales.
+    }
+  }
+
+  return {
+    ok: true,
+    info: {
+      telefono: erp?.tel1 || client.telefono || "",
+      email: erp?.email || client.email || "",
+      listaPrecio: erp?.listaPrecio || client.priceList?.name || "",
+      direccion: erp?.direccion || client.direccion || "",
+    },
+  };
+}
 
 const nullableStr = z
   .string()

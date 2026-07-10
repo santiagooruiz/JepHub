@@ -1,10 +1,15 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ChevronLeft, Pencil, Eye, Plus } from "lucide-react";
+import { ChevronLeft, Eye, Plus } from "lucide-react";
 
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/guard";
 import { advisorScope } from "@/lib/scope";
+import {
+  getParamValues,
+  ACTION_ACTIVITIES_FALLBACK,
+  FILE_TYPES_FALLBACK,
+} from "@/lib/params";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,7 +21,7 @@ import {
   OpportunityQuotesTable,
   type OpportunityQuoteRow,
 } from "@/features/opportunities/opportunity-quotes-table";
-import { DeleteOpportunityButton } from "@/features/opportunities/delete-opportunity-button";
+import { OpportunityActionsMenu } from "@/features/opportunities/opportunity-actions";
 import { formatMoney } from "@/features/quotes/types";
 import { orderEstadoVariant } from "@/features/orders/types";
 import { RegisterActivity } from "@/features/activity/register-activity";
@@ -68,6 +73,11 @@ export default async function OportunidadDetallePage({
           registeredBy: { select: { name: true } },
           order: { select: { id: true } },
           items: true,
+          designRequests: {
+            where: { deletedAt: null },
+            select: { id: true },
+            take: 1,
+          },
         },
         orderBy: { numero: "desc" },
       },
@@ -80,27 +90,30 @@ export default async function OportunidadDetallePage({
   });
   if (!o) notFound();
 
-  const [activities, param, attachments] = await Promise.all([
+  const [activities, acciones, tiposArchivo, attachments] = await Promise.all([
     db.activity.findMany({
       where: { opportunityId: o.id, companyId: user.companyId },
       include: { user: { select: { name: true } } },
       orderBy: { fechaHora: "desc" },
     }),
-    db.parameter.findUnique({
-      where: {
-        companyId_key: { companyId: user.companyId, key: "action_activities" },
-      },
-    }),
+    getParamValues(user.companyId, "action_activities", ACTION_ACTIVITIES_FALLBACK),
+    getParamValues(user.companyId, "file_types", FILE_TYPES_FALLBACK),
     db.attachment.findMany({
       where: { opportunityId: o.id, companyId: user.companyId, deletedAt: null },
       orderBy: { createdAt: "desc" },
     }),
   ]);
-  const acciones = Array.isArray(param?.value)
-    ? (param!.value as { value?: string }[]).map((a) => a.value ?? "").filter(Boolean)
-    : ["Llamada", "Visita", "Email", "Observación"];
 
   const hoy = new Date();
+
+  // "Solicitar planos/cambios" desde el menú Acciones: usa la cotización más
+  // reciente sin solicitud; si ya existe una, el menú ofrece "Ver en backlog".
+  const canRequestDesign = user.ability.can("create", "backlog_design");
+  const designRequestId =
+    o.quotes.find((q) => q.designRequests.length)?.designRequests[0]?.id ?? null;
+  const designQuoteId = designRequestId
+    ? null
+    : o.quotes.find((q) => !q.designRequests.length)?.id ?? null;
 
   // Ítems de cotizaciones aprobadas que aún no generaron pedido
   const disponibles = o.quotes
@@ -253,14 +266,17 @@ export default async function OportunidadDetallePage({
           <Badge variant={oppEstadoVariant(o.estado)}>{o.estado}</Badge>
         </div>
         <div className="flex gap-2">
-          {canDelete && <DeleteOpportunityButton id={o.id} numero={o.numero} />}
-          {canEdit && (
-            <Button asChild variant="outline">
-              <Link href={`/oportunidades/${o.id}/editar`}>
-                <Pencil className="size-4" /> Editar
-              </Link>
-            </Button>
-          )}
+          <OpportunityActionsMenu
+            id={o.id}
+            numero={o.numero}
+            clientId={o.clientId}
+            canEdit={canEdit}
+            canDelete={canDelete}
+            canCreateQuotes={canCreateQuotes}
+            canRequestDesign={canRequestDesign}
+            designQuoteId={designQuoteId}
+            designRequestId={designRequestId}
+          />
           {canCreateQuotes && (
             <Button asChild>
               <Link href={`/cotizaciones/nuevo?oportunidadId=${o.id}`}>
@@ -347,6 +363,7 @@ export default async function OportunidadDetallePage({
             <div className="px-4 pb-4">
               <AttachmentsPanel
                 opportunityId={o.id}
+                tipos={tiposArchivo}
                 attachments={attachments.map((a) => ({
                   id: a.id,
                   tipoArchivo: a.tipoArchivo,

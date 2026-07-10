@@ -801,6 +801,7 @@ Solicitud (cotización "Solicitar planos" o producto [INTERNO])
   - `approved_type_design`: PENDIENTE · SI · NO · DETENIDA.
   - `approved_type_send`: PENDIENTE · ENVIADA · PERDIDA · DETENIDA.
   - `approved_type_estimator`, `approved_type_filing`, `approved_installation`, `approved_types_hold`, etc.
+  - `file_types` (JEP-Hub): catálogo del select **Tipo Archivo** al subir adjuntos — Ficha técnica (aprobación cliente) · Plano comercial (aprobación cliente) · Contrato · Documentos de apoyo · Orden de compra · Soporte de pago.
   - `Company Id` → **multi-tenant** (parámetros por empresa).
 > Implicación para reimplementación: modelar los **estados como catálogo configurable** (no hardcodeados), con `icon` y `color` por valor.
 

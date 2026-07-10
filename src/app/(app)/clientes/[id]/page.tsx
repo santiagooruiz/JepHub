@@ -4,6 +4,11 @@ import { ChevronLeft, Pencil, Eye, Plus, Wallet } from "lucide-react";
 
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/guard";
+import {
+  getParamValues,
+  ACTION_ACTIVITIES_FALLBACK,
+  FILE_TYPES_FALLBACK,
+} from "@/lib/params";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -160,12 +165,10 @@ export default async function ClienteFichaPage({
   });
   if (!c) notFound();
 
-  const param = await db.parameter.findUnique({
-    where: { companyId_key: { companyId: user.companyId, key: "action_activities" } },
-  });
-  const acciones = Array.isArray(param?.value)
-    ? (param!.value as { value?: string }[]).map((o) => o.value ?? "").filter(Boolean)
-    : ["Llamada", "Visita", "Email", "Observación"];
+  const [acciones, tiposArchivo] = await Promise.all([
+    getParamValues(user.companyId, "action_activities", ACTION_ACTIVITIES_FALLBACK),
+    getParamValues(user.companyId, "file_types", FILE_TYPES_FALLBACK),
+  ]);
 
   const opps: RelRow[] = c.opportunities.map((o) => ({
     id: o.id,
@@ -320,6 +323,7 @@ export default async function ClienteFichaPage({
             <div className="px-4 pb-4">
               <AttachmentsPanel
                 clientId={c.id}
+                tipos={tiposArchivo}
                 attachments={c.attachments.map((a) => ({
                   id: a.id,
                   tipoArchivo: a.tipoArchivo,

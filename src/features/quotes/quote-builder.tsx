@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
-import { saveQuote } from "./actions";
+import { saveQuote, getQuoteClientInfo, type QuoteClientInfo } from "./actions";
 import { QUOTE_ESTADOS, IVA_RATE, formatMoney } from "./types";
 import type { QuoteOptions } from "./queries";
 
@@ -112,6 +112,36 @@ export function QuoteBuilder({
   const [error, setError] = React.useState<string | null>(null);
   const [pending, start] = React.useTransition();
 
+  // Datos del cliente (teléfono, email, lista de precio y dirección) leídos
+  // del ERP (MTPROCLI) al seleccionar cliente. DIRECCION prellena la
+  // "Dirección de envío" (editable); al editar se respeta la ya guardada.
+  const [info, setInfo] = React.useState<QuoteClientInfo | null>(null);
+  const firstLoad = React.useRef(true);
+  React.useEffect(() => {
+    const skipPrefill = firstLoad.current && Boolean(editing?.direccionEnvio);
+    firstLoad.current = false;
+    if (!h.clientId) {
+      setInfo(null);
+      return;
+    }
+    let cancelled = false;
+    getQuoteClientInfo(h.clientId).then((res) => {
+      if (cancelled) return;
+      if (!res.ok) {
+        setInfo(null);
+        return;
+      }
+      setInfo(res.info);
+      if (!skipPrefill) {
+        setH((p) => ({ ...p, direccionEnvio: res.info.direccion }));
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [h.clientId]);
+
   function setHeader<K extends keyof typeof h>(k: K, v: (typeof h)[K]) {
     setH((p) => ({ ...p, [k]: v }));
   }
@@ -180,7 +210,12 @@ export function QuoteBuilder({
     <form onSubmit={onSubmit} className="space-y-6">
       {/* Encabezado */}
       <Card className="p-4">
-        <h3 className="mb-4 font-semibold">Datos de la cotización</h3>
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="font-semibold">Datos de la cotización</h3>
+          <span className="text-sm text-muted-foreground">
+            Fecha: {new Date().toLocaleDateString("es-CO")}
+          </span>
+        </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <Field label="Cliente">
             <select
@@ -230,7 +265,7 @@ export function QuoteBuilder({
           <Field label="Tiempo de entrega">
             <Input value={h.tiempoEntrega} onChange={(e) => setHeader("tiempoEntrega", e.target.value)} />
           </Field>
-          <Field label="Fecha de vencimiento">
+          <Field label="Validez de la oferta (vencimiento)">
             <input
               type="date"
               value={h.fechaVencimiento}
@@ -242,9 +277,34 @@ export function QuoteBuilder({
             <Input value={h.ordenCompra} onChange={(e) => setHeader("ordenCompra", e.target.value)} />
           </Field>
           <Field label="Dirección de envío">
-            <Input value={h.direccionEnvio} onChange={(e) => setHeader("direccionEnvio", e.target.value)} />
+            <Input
+              value={h.direccionEnvio}
+              onChange={(e) => setHeader("direccionEnvio", e.target.value)}
+              placeholder="Se toma de la dirección del cliente"
+            />
           </Field>
         </div>
+
+        {info && (
+          <div className="mt-4 grid grid-cols-1 gap-x-6 gap-y-1 rounded-lg border bg-muted/30 p-3 text-sm sm:grid-cols-2">
+            <div className="flex justify-between gap-4">
+              <span className="text-muted-foreground">Teléfono</span>
+              <span className="text-right font-medium">{info.telefono || "—"}</span>
+            </div>
+            <div className="flex justify-between gap-4">
+              <span className="text-muted-foreground">Email</span>
+              <span className="truncate text-right font-medium">{info.email || "—"}</span>
+            </div>
+            <div className="flex justify-between gap-4">
+              <span className="text-muted-foreground">Lista de precio</span>
+              <span className="text-right font-medium">{info.listaPrecio || "—"}</span>
+            </div>
+            <div className="flex justify-between gap-4">
+              <span className="text-muted-foreground">Dirección principal</span>
+              <span className="text-right font-medium">{info.direccion || "—"}</span>
+            </div>
+          </div>
+        )}
       </Card>
 
       {/* Ítems */}
@@ -338,8 +398,18 @@ export function QuoteBuilder({
           </table>
         </div>
 
-        {/* Totales */}
-        <div className="mt-4 flex justify-end">
+        {/* Observaciones + Totales */}
+        <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex-1 space-y-1.5 sm:max-w-md">
+            <label className="text-sm font-medium">Observaciones</label>
+            <textarea
+              value={h.observacion}
+              onChange={(e) => setHeader("observacion", e.target.value)}
+              rows={4}
+              placeholder="Observaciones"
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            />
+          </div>
           <div className="w-64 space-y-1 text-sm">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Subtotal</span>

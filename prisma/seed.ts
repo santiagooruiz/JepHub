@@ -266,6 +266,19 @@ async function main() {
       ],
     },
     {
+      // Catálogo del select "Tipo Archivo" al subir adjuntos (clientes,
+      // oportunidades, cotizaciones, pedidos).
+      key: "file_types",
+      value: [
+        { id: "ficha-tecnica", value: "Ficha técnica (aprobación cliente)", icon: "fa-file", color: "green" },
+        { id: "plano-comercial", value: "Plano comercial (aprobación cliente)", icon: "fa-file", color: "green" },
+        { id: "contrato", value: "Contrato", icon: "fa-file", color: "green" },
+        { id: "documentos-apoyo", value: "Documentos de apoyo", icon: "fa-file", color: "green" },
+        { id: "orden-compra", value: "Orden de compra", icon: "fa-file", color: "green" },
+        { id: "soporte-pago", value: "Soporte de pago", icon: "fa-file", color: "green" },
+      ],
+    },
+    {
       key: "client_states",
       value: [
         { id: "prospecto", value: "Prospecto", color: "muted" },
