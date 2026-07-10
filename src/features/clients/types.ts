@@ -37,12 +37,20 @@ export type ErpClientStats = {
   prospectos: number;
 };
 
+/**
+ * Contacto del cliente en el ERP: MTPROCLI guarda hasta 4 en columnas planas
+ * ZCONTAC1..4 (nombre) / ZCARGOCONT1..4 (cargo) / ZDIRCONT1..4 (correo) /
+ * ZTELCONTAC1..4 (teléfono).
+ */
 export type ErpClientContact = {
   nombre: string;
   cargo: string;
   telefono: string;
-  direccion: string;
+  /** ZDIRCONT: en la práctica guarda el correo del contacto. */
+  email: string;
 };
+
+export const ERP_MAX_CONTACTS = 4;
 
 /** Ficha del cliente leída del ERP (MTPROCLI), con nombres resueltos. */
 export type ErpClientDetail = {

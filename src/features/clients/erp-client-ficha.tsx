@@ -16,6 +16,7 @@ import {
   getErpClientDocs,
 } from "@/server/ofimatica/clients";
 import { AttachmentsPanel } from "./attachments-panel";
+import { ErpContactsPanel } from "./erp-contacts-panel";
 import { NewOpportunityButton } from "./new-opportunity-button";
 import { estadoVariant, type ErpClientDocRow } from "./types";
 
@@ -122,11 +123,13 @@ export async function ErpClientFicha({
   nit,
   companyId,
   canCreateOpp,
+  canManageContacts,
   allowedCodvens,
 }: {
   nit: string;
   companyId: string;
   canCreateOpp: boolean;
+  canManageContacts: boolean;
   /** Alcance por asesor: si viene, el cliente debe pertenecer a uno de estos codven. */
   allowedCodvens?: string[];
 }) {
@@ -221,27 +224,15 @@ export async function ErpClientFicha({
             </div>
           </Card>
 
-          {erp.contacts.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Contactos internos</CardTitle>
-              </CardHeader>
-              <div className="space-y-3 px-4 pb-4">
-                {erp.contacts.map((ct, i) => (
-                  <div key={i} className="rounded-md border p-2.5 text-sm">
-                    <p className="font-medium">{ct.nombre}</p>
-                    {ct.cargo && <p className="text-xs text-muted-foreground">{ct.cargo}</p>}
-                    {ct.telefono && <p className="mt-0.5 text-muted-foreground">Tel: {ct.telefono}</p>}
-                    {ct.direccion && (
-                      <p className="mt-0.5 break-all text-muted-foreground">
-                        {ct.direccion.includes("@") ? ct.direccion.toLowerCase() : ct.direccion}
-                      </p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </Card>
-          )}
+          <Card>
+            <div className="p-4">
+              <ErpContactsPanel
+                nit={erp.nit}
+                contacts={erp.contacts}
+                canManage={canManageContacts}
+              />
+            </div>
+          </Card>
         </div>
 
         {/* Centro: tabs + archivos */}

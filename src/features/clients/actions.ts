@@ -9,12 +9,14 @@ import { isAdmin, isAsesor } from "@/lib/auth";
 import { isErpDbConfigured } from "@/server/ofimatica/db";
 import {
   ERP_CLIENT_SORT_KEYS,
+  getErpClientByNit,
   getErpClientsExport,
   insertErpClient,
+  updateErpClientContacts,
   type ErpClientSortKey,
   type ErpClientTipoFiltro,
 } from "@/server/ofimatica/clients";
-import type { ErpClientRow } from "@/features/clients/types";
+import { ERP_MAX_CONTACTS, type ErpClientRow } from "@/features/clients/types";
 import type { ActionResult } from "@/features/config/actions";
 
 const nullableStr = z
@@ -293,6 +295,96 @@ export async function deleteContact(id: string): Promise<ActionResult> {
   if (!contact) return { ok: false, error: "Contacto no encontrado." };
   await db.contact.delete({ where: { id } });
   revalidatePath(`/clientes/${contact.clientId}`);
+  return { ok: true };
+}
+
+// ────────────────── Contactos del ERP (MTPROCLI ZCONTAC1..4) ──────────────────
+// Los contactos de un cliente del ERP viven en 4 slots de columnas planas de
+// MTPROCLI. La estrategia es leer-modificar-reescribir compactado: la acción lee
+// los contactos actuales, aplica la operación (agregar/editar/eliminar) y
+// reescribe los 4 slots, así nunca quedan huecos intermedios.
+
+const erpContactSchema = z.object({
+  nit: z.string().min(1),
+  /** Índice (0..3) dentro de la lista compactada; ausente = agregar nuevo. */
+  index: z.number().int().min(0).max(3).optional(),
+  nombre: z.string().trim().min(1, "Nombre requerido").max(60, "Nombre: máximo 60 caracteres"),
+  cargo: z.string().trim().max(60, "Cargo: máximo 60 caracteres").optional().default(""),
+  email: z.string().trim().max(160, "Correo: máximo 160 caracteres").optional().default(""),
+  telefono: z.string().trim().max(30, "Teléfono: máximo 30 caracteres").optional().default(""),
+});
+
+/** Carga el cliente del ERP validando el alcance por asesor. */
+async function getScopedErpClient(
+  user: Awaited<ReturnType<typeof requireUser>>,
+  nit: string
+) {
+  const erp = await getErpClientByNit(nit);
+  if (!erp) return null;
+  if (isAsesor(user) && !user.codvens.includes(erp.codven)) return null;
+  return erp;
+}
+
+export async function saveErpContact(input: unknown): Promise<ActionResult> {
+  const raw = input as { index?: number };
+  const user = await requirePermission(
+    raw?.index !== undefined ? "editcontact" : "createcontact",
+    "clients"
+  );
+  const parsed = erpContactSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Datos inválidos" };
+  }
+  const { nit, index, ...contact } = parsed.data;
+
+  try {
+    const erp = await getScopedErpClient(user, nit);
+    if (!erp) return { ok: false, error: "Cliente no encontrado." };
+
+    const contacts = [...erp.contacts];
+    if (index === undefined) {
+      if (contacts.length >= ERP_MAX_CONTACTS) {
+        return { ok: false, error: `El cliente ya tiene los ${ERP_MAX_CONTACTS} contactos permitidos.` };
+      }
+      contacts.push(contact);
+    } else {
+      if (index >= contacts.length) return { ok: false, error: "Contacto no encontrado." };
+      contacts[index] = contact;
+    }
+    await updateErpClientContacts(nit, contacts);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Error desconocido";
+    return { ok: false, error: `No se pudo guardar en el ERP: ${message}` };
+  }
+
+  revalidatePath(`/clientes/${nit}`);
+  return { ok: true };
+}
+
+export async function deleteErpContact(input: {
+  nit: string;
+  index: number;
+}): Promise<ActionResult> {
+  const user = await requirePermission("deletecontact", "clients");
+  const nit = (input?.nit ?? "").trim();
+  const index = Number(input?.index);
+  if (!nit || !Number.isInteger(index) || index < 0 || index > 3) {
+    return { ok: false, error: "Datos inválidos" };
+  }
+
+  try {
+    const erp = await getScopedErpClient(user, nit);
+    if (!erp) return { ok: false, error: "Cliente no encontrado." };
+    if (index >= erp.contacts.length) return { ok: false, error: "Contacto no encontrado." };
+
+    const contacts = erp.contacts.filter((_, i) => i !== index);
+    await updateErpClientContacts(nit, contacts);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Error desconocido";
+    return { ok: false, error: `No se pudo eliminar en el ERP: ${message}` };
+  }
+
+  revalidatePath(`/clientes/${nit}`);
   return { ok: true };
 }
 

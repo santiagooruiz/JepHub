@@ -329,7 +329,7 @@ function buildContacts(r: Record<string, unknown>): ErpClientContact[] {
       nombre,
       cargo: clean(r[`car${i}`] as string),
       telefono: clean(r[`tel${i}`] as string),
-      direccion: clean(r[`dir${i}`] as string),
+      email: clean(r[`dir${i}`] as string),
     });
   }
   return out;
@@ -406,6 +406,41 @@ export async function getErpClientByNit(nit: string): Promise<ErpClientDetail | 
     contactoPrincipal: clean(r.contactoPrincipal),
     contacts,
   };
+}
+
+/**
+ * Reescribe los 4 slots de contacto de MTPROCLI (ZCONTAC1..4 y compañía) de
+ * forma compacta: los contactos recibidos ocupan los primeros slots y el resto
+ * queda en '' (las columnas son char NOT NULL, nunca NULL). Máximo 4.
+ * Longitudes reales: ZCONTAC/ZCARGOCONT char(60), ZDIRCONT char(160) — guarda
+ * el correo —, ZTELCONTAC char(30).
+ */
+export async function updateErpClientContacts(
+  nit: string,
+  contacts: { nombre: string; cargo: string; email: string; telefono: string }[]
+): Promise<void> {
+  if (contacts.length > 4) throw new Error("Máximo 4 contactos por cliente.");
+  const pool = await getErpPool();
+  const request = pool.request().input("nit", sql.Char(15), nit.trim());
+  const sets: string[] = [];
+  for (let i = 1; i <= 4; i++) {
+    const c = contacts[i - 1];
+    request
+      .input(`con${i}`, sql.Char(60), fit(c?.nombre, 60))
+      .input(`car${i}`, sql.Char(60), fit(c?.cargo, 60))
+      .input(`dir${i}`, sql.Char(160), fit(c?.email, 160))
+      .input(`tel${i}`, sql.Char(30), fit(c?.telefono, 30));
+    sets.push(
+      `ZCONTAC${i} = @con${i}, ZCARGOCONT${i} = @car${i}, ZDIRCONT${i} = @dir${i}, ZTELCONTAC${i} = @tel${i}`
+    );
+  }
+  const res = await request.query(`
+    UPDATE MTPROCLI SET ${sets.join(",\n      ")}
+    WHERE NIT = @nit AND ESCLIENTE = 'S';
+    SELECT @@ROWCOUNT AS n`);
+  if (Number(res.recordset[0]?.n ?? 0) === 0) {
+    throw new Error("El cliente no existe en el ERP.");
+  }
 }
 
 /** Saldo de cartera del cliente (documentos con saldo + aging), vía TVF del ERP. */
