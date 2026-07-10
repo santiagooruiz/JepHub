@@ -4,7 +4,6 @@ import { ChevronLeft } from "lucide-react";
 
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/guard";
-import { isAsesor } from "@/lib/auth";
 import { advisorScope } from "@/lib/scope";
 import { getOpportunityOptions } from "@/features/opportunities/queries";
 import {
@@ -34,9 +33,9 @@ export default async function EditarOportunidadPage({
     clientId: o.clientId,
     nombre: o.nombre,
     contacto: o.contacto,
-    advisorId: o.advisorId,
-    estado: o.estado,
-    probabilidad: o.probabilidad,
+    cantidadPuestos: o.cantidadPuestos,
+    areaCubrir: o.areaCubrir === null ? null : Number(o.areaCubrir),
+    observaciones: o.observaciones,
     fechaCierreProyectada: o.fechaCierreProyectada
       ? o.fechaCierreProyectada.toISOString().slice(0, 10)
       : null,
@@ -53,11 +52,7 @@ export default async function EditarOportunidadPage({
       <h1 className="mb-6 text-2xl font-semibold tracking-tight">
         Editar oportunidad
       </h1>
-      <OpportunityForm
-        options={options}
-        editing={editing}
-        canPickAdvisor={!isAsesor(user)}
-      />
+      <OpportunityForm options={options} editing={editing} />
     </div>
   );
 }

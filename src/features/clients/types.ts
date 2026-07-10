@@ -67,7 +67,12 @@ export type ErpClientDetail = {
   web: string;
   asesor: string;
   codven: string;
-  canal: string;
+  /** MTPRECIO.DESCRIPCIO vía MTPROCLI.CODPRECIO. */
+  listaPrecio: string;
+  /** TIPOCL.NOMBRE vía MTPROCLI.TIPOCLI. */
+  sector: string;
+  /** CANAL.NOMBRE vía MTPROCLI.CANAL. */
+  subSector: string;
   esProveedor: boolean;
   habilitado: boolean;
   plazo: number;

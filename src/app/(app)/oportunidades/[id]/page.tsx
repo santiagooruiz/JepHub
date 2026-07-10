@@ -288,6 +288,14 @@ export default async function OportunidadDetallePage({
             </div>
             <Row label="Contacto" value={o.contacto} />
             <Row label="Asesor" value={o.advisor?.name} />
+            <Row
+              label="Cantidad de puestos"
+              value={o.cantidadPuestos !== null ? String(o.cantidadPuestos) : null}
+            />
+            <Row
+              label="Área a cubrir"
+              value={o.areaCubrir !== null ? `${Number(o.areaCubrir)} m²` : null}
+            />
             <Row label="Probabilidad" value={probLabel(o.probabilidad)} />
             <Row
               label="Cierre proyectado"
@@ -300,6 +308,12 @@ export default async function OportunidadDetallePage({
                   : null
               }
             />
+            {o.observaciones && (
+              <div className="py-1.5 text-sm">
+                <span className="text-muted-foreground">Observaciones</span>
+                <p className="mt-1 whitespace-pre-wrap font-medium">{o.observaciones}</p>
+              </div>
+            )}
           </div>
         </Card>
 

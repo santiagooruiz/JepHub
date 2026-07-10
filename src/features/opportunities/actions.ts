@@ -21,9 +21,9 @@ const schema = z.object({
   clientId: z.string().min(1, "Cliente requerido"),
   nombre: z.string().min(1, "Nombre requerido"),
   contacto: nullableStr,
-  advisorId: nullableStr,
-  estado: z.string().min(1),
-  probabilidad: z.enum(["UNDEFINED", "HIGH", "FIXED"]),
+  cantidadPuestos: z.number().int().min(0).nullable().optional(),
+  areaCubrir: z.number().min(0).nullable().optional(),
+  observaciones: nullableStr,
   fechaCierreProyectada: nullableStr,
 });
 
@@ -42,16 +42,19 @@ export async function saveOpportunity(input: unknown): Promise<ActionResult> {
 
   const client = await db.client.findFirst({
     where: { id: clientId, companyId: user.companyId },
-    select: { id: true },
+    select: { id: true, advisorId: true },
   });
   if (!client) return { ok: false, error: "Cliente no encontrado." };
+
+  // El asesor no se elige en el formulario: la oportunidad hereda el asesor
+  // asignado del cliente; si el cliente no tiene y quien crea es un Asesor,
+  // queda a su nombre. El estado tampoco: arranca "No Cotizada" (default del
+  // modelo) y pasa a "Cotizada" cuando se crea una cotización.
+  const advisorId = client.advisorId ?? (isAsesor(user) ? user.id : null);
 
   const fecha = fechaCierreProyectada ? new Date(fechaCierreProyectada) : null;
   const data = {
     ...rest,
-    // Un Asesor siempre queda como dueño de sus oportunidades (no puede
-    // asignarlas a otro); el admin sí elige el asesor.
-    advisorId: isAsesor(user) ? user.id : rest.advisorId,
     clientId,
     fechaCierreProyectada:
       fecha && !Number.isNaN(fecha.getTime()) ? fecha : null,
@@ -60,7 +63,9 @@ export async function saveOpportunity(input: unknown): Promise<ActionResult> {
   if (id) {
     await db.opportunity.updateMany({
       where: { id, companyId: user.companyId, ...advisorScope(user) },
-      data,
+      // Al editar solo se re-sincroniza el asesor si el cliente tiene uno
+      // asignado (no se pisa con null un dueño ya existente).
+      data: { ...data, ...(client.advisorId ? { advisorId: client.advisorId } : {}) },
     });
   } else {
     const last = await db.opportunity.findFirst({
@@ -69,7 +74,12 @@ export async function saveOpportunity(input: unknown): Promise<ActionResult> {
       select: { numero: true },
     });
     await db.opportunity.create({
-      data: { ...data, companyId: user.companyId, numero: (last?.numero ?? 0) + 1 },
+      data: {
+        ...data,
+        advisorId,
+        companyId: user.companyId,
+        numero: (last?.numero ?? 0) + 1,
+      },
     });
   }
 

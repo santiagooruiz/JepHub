@@ -239,6 +239,9 @@ model Opportunity {
   client                Client     @relation(fields: [clientId], references: [id])
   nombre                String
   contacto              String?
+  cantidadPuestos       Int?
+  areaCubrir            Decimal?   @db.Decimal(12, 2)
+  observaciones         String?
   advisorId             String?
   advisor               User?      @relation("OppAdvisor", fields: [advisorId], references: [id])
   fechaCierreProyectada DateTime?

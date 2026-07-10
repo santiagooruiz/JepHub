@@ -355,7 +355,9 @@ export async function getErpClientByNit(nit: string): Promise<ErpClientDetail | 
         LTRIM(RTRIM(C.PAGINAWEB))  AS web,
         LTRIM(RTRIM(V.NOMBRE))     AS asesor,
         LTRIM(RTRIM(C.VENDEDOR))   AS codven,
-        LTRIM(RTRIM(CN.NOMBRE))    AS canal,
+        LTRIM(RTRIM(P.DESCRIPCIO)) AS listaPrecio,
+        LTRIM(RTRIM(T.NOMBRE))     AS sector,
+        LTRIM(RTRIM(CN.NOMBRE))    AS subSector,
         C.ESPROVEE                 AS esprovee,
         LTRIM(RTRIM(C.HABILITADO)) AS habilitado,
         C.ISPROSPECT               AS isprospect,
@@ -371,6 +373,8 @@ export async function getErpClientByNit(nit: string): Promise<ErpClientDetail | 
       LEFT JOIN VENDEN V ON V.CODVEN = C.VENDEDOR
       LEFT JOIN CIUDAD CD ON CD.CODCIUDAD = C.CDCIIU
       LEFT JOIN CANAL CN ON CN.CODCANAL = C.CANAL
+      LEFT JOIN MTPRECIO P ON P.CODPRECIO = C.CODPRECIO
+      LEFT JOIN TIPOCL T ON T.CODTIPOCL = C.TIPOCLI
       WHERE C.NIT = @nit AND C.ESCLIENTE = 'S'`);
   const r = res.recordset[0];
   if (!r) return null;
@@ -382,7 +386,11 @@ export async function getErpClientByNit(nit: string): Promise<ErpClientDetail | 
     c4: r.c4, car4: r.car4, tel4: r.tel4c, dir4: r.dir4,
   });
 
-  const canal = clean(r.canal);
+  // Los catálogos del ERP usan "NO ASIGNADO"/"SIN DATOS" como placeholder.
+  const cat = (v: unknown) => {
+    const s = clean(v as string);
+    return s === "NO ASIGNADO" || s === "SIN DATOS" ? "" : s;
+  };
   return {
     nit: r.nit ?? "",
     nombre: r.nombre || "(sin nombre)",
@@ -397,7 +405,9 @@ export async function getErpClientByNit(nit: string): Promise<ErpClientDetail | 
     web: r.web || "",
     asesor: r.asesor || "",
     codven: clean(r.codven),
-    canal: canal === "NO ASIGNADO" || canal === "SIN DATOS" ? "" : canal,
+    listaPrecio: cat(r.listaPrecio),
+    sector: cat(r.sector),
+    subSector: cat(r.subSector),
     esProveedor: r.esprovee === "S",
     habilitado: r.habilitado === "S" || r.habilitado === "1",
     plazo: Number(r.plazo ?? 0),
@@ -406,6 +416,43 @@ export async function getErpClientByNit(nit: string): Promise<ErpClientDetail | 
     contactoPrincipal: clean(r.contactoPrincipal),
     contacts,
   };
+}
+
+/**
+ * Contactos (nombre + cargo) de varios clientes del ERP en una sola consulta,
+ * leídos de los slots ZCONTAC1..4 / ZCARGOCONT1..4 de MTPROCLI. Se usa para el
+ * select de contacto del formulario de oportunidades.
+ */
+export async function getErpContactsByNits(
+  nits: string[]
+): Promise<{ nit: string; nombre: string; cargo: string }[]> {
+  // Tope defensivo: mssql admite máx. ~2100 parámetros por consulta.
+  const list = [...new Set(nits.map((n) => n.trim()).filter(Boolean))].slice(0, 1000);
+  if (list.length === 0) return [];
+  const pool = await getErpPool();
+  const request = pool.request();
+  const placeholders = list.map((n, i) => {
+    request.input(`n${i}`, sql.Char(15), n);
+    return `@n${i}`;
+  });
+  const res = await request.query(`
+    SELECT LTRIM(RTRIM(NIT)) AS nit,
+      LTRIM(RTRIM(ZCONTAC1)) c1, LTRIM(RTRIM(ZCARGOCONT1)) car1,
+      LTRIM(RTRIM(ZCONTAC2)) c2, LTRIM(RTRIM(ZCARGOCONT2)) car2,
+      LTRIM(RTRIM(ZCONTAC3)) c3, LTRIM(RTRIM(ZCARGOCONT3)) car3,
+      LTRIM(RTRIM(ZCONTAC4)) c4, LTRIM(RTRIM(ZCARGOCONT4)) car4
+    FROM MTPROCLI
+    WHERE ESCLIENTE = 'S' AND NIT IN (${placeholders.join(", ")})`);
+
+  const out: { nit: string; nombre: string; cargo: string }[] = [];
+  for (const r of res.recordset) {
+    for (let i = 1; i <= 4; i++) {
+      const nombre = clean(r[`c${i}`] as string);
+      if (!nombre) continue;
+      out.push({ nit: r.nit as string, nombre, cargo: clean(r[`car${i}`] as string) });
+    }
+  }
+  return out;
 }
 
 /**

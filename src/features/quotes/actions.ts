@@ -123,6 +123,20 @@ export async function saveQuote(input: unknown): Promise<SaveResult> {
       },
     });
     quoteId = created.id;
+
+    // El estado de la oportunidad no se edita a mano: al crear su primera
+    // cotización pasa de "No Cotizada" a "Cotizada".
+    if (d.opportunityId) {
+      await db.opportunity.updateMany({
+        where: {
+          id: d.opportunityId,
+          companyId: user.companyId,
+          estado: "No Cotizada",
+        },
+        data: { estado: "Cotizada" },
+      });
+      revalidatePath(`/oportunidades/${d.opportunityId}`);
+    }
   }
 
   revalidatePath("/cotizaciones");
@@ -180,6 +194,17 @@ export async function duplicateQuote(id: string): Promise<SaveResult> {
       },
     },
   });
+
+  if (source.opportunityId) {
+    await db.opportunity.updateMany({
+      where: {
+        id: source.opportunityId,
+        companyId: user.companyId,
+        estado: "No Cotizada",
+      },
+      data: { estado: "Cotizada" },
+    });
+  }
 
   revalidatePath("/cotizaciones");
   if (source.opportunityId) revalidatePath(`/oportunidades/${source.opportunityId}`);

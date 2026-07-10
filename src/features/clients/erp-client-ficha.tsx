@@ -220,7 +220,17 @@ export async function ErpClientFicha({
               <Row label="Dirección" value={erp.direccion} />
               <Row label="Ciudad" value={erp.ciudad} />
               <Row label="Asesor" value={erp.asesor} />
-              {erp.canal && <Row label="Canal" value={erp.canal} />}
+            </div>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Información adicional</CardTitle>
+            </CardHeader>
+            <div className="px-4 pb-4">
+              <Row label="Lista de precio" value={erp.listaPrecio} />
+              <Row label="Sector" value={erp.sector} />
+              <Row label="SubSector" value={erp.subSector} />
             </div>
           </Card>
 
