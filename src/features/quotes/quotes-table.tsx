@@ -99,6 +99,11 @@ export function QuotesTable({
   ];
 
   return (
-    <DataTable columns={columns} data={data} searchPlaceholder="Buscar cotización…" />
+    <DataTable
+      columns={columns}
+      data={data}
+      searchPlaceholder="Buscar cotización…"
+      exportName="cotizaciones"
+    />
   );
 }

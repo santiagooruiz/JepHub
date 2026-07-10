@@ -6,8 +6,10 @@ import { Button } from "@/components/ui/button";
 import { ErpClientsTable } from "@/features/clients/erp-clients-table";
 import {
   CLIENTS_PAGE_SIZE,
+  ERP_CLIENT_SORT_KEYS,
   getErpClients,
   getErpClientStats,
+  type ErpClientSortKey,
   type ErpClientTipoFiltro,
 } from "@/server/ofimatica/clients";
 
@@ -18,7 +20,13 @@ const TIPOS: ErpClientTipoFiltro[] = ["empresas", "personas", "prospectos"];
 export default async function ClientesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; page?: string; tipo?: string }>;
+  searchParams: Promise<{
+    q?: string;
+    page?: string;
+    tipo?: string;
+    sort?: string;
+    dir?: string;
+  }>;
 }) {
   const user = await requirePermission("view", "clients");
   const canCreate = user.ability.can("create", "clients");
@@ -29,6 +37,10 @@ export default async function ClientesPage({
   const tipo = TIPOS.includes(sp.tipo as ErpClientTipoFiltro)
     ? (sp.tipo as ErpClientTipoFiltro)
     : undefined;
+  const sort = ERP_CLIENT_SORT_KEYS.includes(sp.sort as ErpClientSortKey)
+    ? (sp.sort as ErpClientSortKey)
+    : undefined;
+  const dir = sp.dir === "desc" ? "desc" : "asc";
 
   // Alcance por rol: un Asesor solo ve los clientes cuyo VENDEDOR (MTPROCLI)
   // sea uno de sus codven; admin y demás roles ven todo.
@@ -37,7 +49,7 @@ export default async function ClientesPage({
   // Las tarjetas muestran los conteos por categoría (sin el filtro tipo);
   // la tabla sí se filtra por la tarjeta seleccionada.
   const [{ rows, total }, stats] = await Promise.all([
-    getErpClients({ q, page, pageSize: CLIENTS_PAGE_SIZE, codvens, tipo }),
+    getErpClients({ q, page, pageSize: CLIENTS_PAGE_SIZE, codvens, tipo, sort, dir }),
     getErpClientStats(q, codvens),
   ]);
 
@@ -64,6 +76,8 @@ export default async function ClientesPage({
         pageSize={CLIENTS_PAGE_SIZE}
         q={q}
         tipo={tipo ?? null}
+        sort={sort ?? null}
+        dir={dir}
         stats={stats}
       />
     </div>

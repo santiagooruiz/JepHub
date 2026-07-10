@@ -106,6 +106,11 @@ export function OpportunitiesTable({
   ];
 
   return (
-    <DataTable columns={columns} data={data} searchPlaceholder="Buscar oportunidad…" />
+    <DataTable
+      columns={columns}
+      data={data}
+      searchPlaceholder="Buscar oportunidad…"
+      exportName="oportunidades"
+    />
   );
 }

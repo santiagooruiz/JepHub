@@ -78,5 +78,12 @@ export function OrdersTable({
     },
   ];
 
-  return <DataTable columns={columns} data={data} searchPlaceholder="Buscar pedido…" />;
+  return (
+    <DataTable
+      columns={columns}
+      data={data}
+      searchPlaceholder="Buscar pedido…"
+      exportName="pedidos"
+    />
+  );
 }

@@ -5,9 +5,16 @@ import { z } from "zod";
 
 import { db } from "@/lib/db";
 import { requirePermission, requireUser } from "@/lib/guard";
-import { isAdmin } from "@/lib/auth";
+import { isAdmin, isAsesor } from "@/lib/auth";
 import { isErpDbConfigured } from "@/server/ofimatica/db";
-import { insertErpClient } from "@/server/ofimatica/clients";
+import {
+  ERP_CLIENT_SORT_KEYS,
+  getErpClientsExport,
+  insertErpClient,
+  type ErpClientSortKey,
+  type ErpClientTipoFiltro,
+} from "@/server/ofimatica/clients";
+import type { ErpClientRow } from "@/features/clients/types";
 import type { ActionResult } from "@/features/config/actions";
 
 const nullableStr = z
@@ -185,6 +192,39 @@ export async function ensureClientAnchor(
     select: { id: true },
   });
   return { ok: true, clientId: created.id };
+}
+
+/**
+ * Filas para exportar el listado de clientes a Excel (todas las páginas del
+ * set filtrado). El alcance por asesor se deriva de la sesión en el servidor.
+ */
+export async function exportErpClients(input: {
+  q?: string;
+  tipo?: string;
+  sort?: string;
+  dir?: string;
+}): Promise<ActionResult & { rows?: ErpClientRow[] }> {
+  const user = await requireUser();
+  if (!user.ability.can("view", "clients")) {
+    return { ok: false, error: "Sin permiso para ver clientes." };
+  }
+  try {
+    const rows = await getErpClientsExport({
+      q: input.q,
+      tipo: ["empresas", "personas", "prospectos"].includes(input.tipo ?? "")
+        ? (input.tipo as ErpClientTipoFiltro)
+        : undefined,
+      sort: ERP_CLIENT_SORT_KEYS.includes(input.sort as ErpClientSortKey)
+        ? (input.sort as ErpClientSortKey)
+        : undefined,
+      dir: input.dir === "desc" ? "desc" : "asc",
+      codvens: isAsesor(user) ? user.codvens : undefined,
+    });
+    return { ok: true, rows };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Error desconocido";
+    return { ok: false, error: `No se pudo exportar: ${message}` };
+  }
 }
 
 export async function deleteClient(id: string): Promise<ActionResult> {

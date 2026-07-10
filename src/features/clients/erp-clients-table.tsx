@@ -3,13 +3,16 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ChevronLeft, ChevronRight, Search } from "lucide-react";
+import { ArrowUpDown, ChevronLeft, ChevronRight, Download, Search } from "lucide-react";
+import { toast } from "sonner";
 
 import { cn } from "@/lib/utils";
+import { downloadExcel } from "@/lib/export";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { exportErpClients } from "./actions";
 import { type ErpClientRow, type ErpClientStats, estadoVariant } from "./types";
 
 const STATS: { key: keyof ErpClientStats; label: string }[] = [
@@ -19,6 +22,19 @@ const STATS: { key: keyof ErpClientStats; label: string }[] = [
   { key: "prospectos", label: "Prospectos" },
 ];
 
+// Encabezados de la tabla; sortKey debe existir en el whitelist del servidor.
+const COLUMNS: { label: string; sortKey: string | null }[] = [
+  { label: "Nombre", sortKey: "nombre" },
+  { label: "Documento", sortKey: "documento" },
+  { label: "Tipo", sortKey: null },
+  { label: "Email", sortKey: "email" },
+  { label: "Teléfono", sortKey: "telefono" },
+  { label: "Ciudad", sortKey: "ciudad" },
+  { label: "Asesor", sortKey: "asesor" },
+  { label: "Estado", sortKey: "estado" },
+  { label: "Fecha registro", sortKey: "fechaRegistro" },
+];
+
 export function ErpClientsTable({
   rows,
   total,
@@ -26,6 +42,8 @@ export function ErpClientsTable({
   pageSize,
   q,
   tipo,
+  sort,
+  dir,
   stats,
 }: {
   rows: ErpClientRow[];
@@ -35,6 +53,9 @@ export function ErpClientsTable({
   q: string;
   /** Filtro activo de las tarjetas (empresas/personas/prospectos) o null. */
   tipo: string | null;
+  /** Ordenamiento activo (columna del whitelist) o null. */
+  sort: string | null;
+  dir: "asc" | "desc";
   stats: ErpClientStats;
 }) {
   const router = useRouter();
@@ -42,10 +63,17 @@ export function ErpClientsTable({
   const searchParams = useSearchParams();
   const [term, setTerm] = React.useState(q);
   const [pending, startTransition] = React.useTransition();
+  const [exporting, startExport] = React.useTransition();
   const firstRun = React.useRef(true);
 
   const navigate = React.useCallback(
-    (next: { q?: string; page?: number; tipo?: string | null }) => {
+    (next: {
+      q?: string;
+      page?: number;
+      tipo?: string | null;
+      sort?: string | null;
+      dir?: string;
+    }) => {
       const params = new URLSearchParams(searchParams.toString());
       if (next.q !== undefined) {
         if (next.q) params.set("q", next.q);
@@ -55,6 +83,11 @@ export function ErpClientsTable({
         if (next.tipo) params.set("tipo", next.tipo);
         else params.delete("tipo");
       }
+      if (next.sort !== undefined) {
+        if (next.sort) params.set("sort", next.sort);
+        else params.delete("sort");
+      }
+      if (next.dir !== undefined) params.set("dir", next.dir);
       if (next.page !== undefined) params.set("page", String(next.page));
       startTransition(() => router.push(`${pathname}?${params.toString()}`));
     },
@@ -121,15 +154,55 @@ export function ErpClientsTable({
         })}
       </div>
 
-      {/* Buscador */}
-      <div className="relative w-full max-w-sm">
-        <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          value={term}
-          onChange={(e) => setTerm(e.target.value)}
-          placeholder="Buscar por nombre, NIT o email…"
-          className="pl-8"
-        />
+      {/* Buscador + exportar */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="relative w-full max-w-sm">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={term}
+            onChange={(e) => setTerm(e.target.value)}
+            placeholder="Buscar por nombre, NIT o email…"
+            className="pl-8"
+          />
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={exporting}
+          onClick={() =>
+            startExport(async () => {
+              // Exporta TODO el set filtrado (no solo la página visible).
+              const res = await exportErpClients({
+                q,
+                tipo: tipo ?? undefined,
+                sort: sort ?? undefined,
+                dir,
+              });
+              if (!res.ok) {
+                toast.error(res.error);
+                return;
+              }
+              downloadExcel(
+                "clientes",
+                COLUMNS.map((c) => c.label),
+                (res.rows ?? []).map((r) => [
+                  r.nombre,
+                  r.nit,
+                  r.tipo,
+                  r.email,
+                  r.telefono,
+                  r.ciudad,
+                  r.asesor,
+                  r.estado,
+                  r.fechaRegistro,
+                ])
+              );
+            })
+          }
+        >
+          <Download className="size-4" /> {exporting ? "Exportando…" : "Excel"}
+        </Button>
       </div>
 
       {/* Tabla */}
@@ -142,17 +215,36 @@ export function ErpClientsTable({
         <table className="w-full border-collapse text-sm">
           <thead>
             <tr className="border-b bg-muted/40 text-left">
-              {["Nombre", "Documento", "Tipo", "Email", "Teléfono", "Ciudad", "Asesor", "Estado", "Fecha registro"].map(
-                (h) => (
-                  <th
-                    key={h}
-                    className="whitespace-nowrap px-3 font-medium"
-                    style={{ height: "var(--row-h)" }}
-                  >
-                    {h}
-                  </th>
-                )
-              )}
+              {COLUMNS.map((col) => (
+                <th
+                  key={col.label}
+                  className="whitespace-nowrap px-3 font-medium"
+                  style={{ height: "var(--row-h)" }}
+                >
+                  {col.sortKey ? (
+                    <button
+                      className="inline-flex items-center gap-1 hover:text-foreground"
+                      onClick={() =>
+                        navigate({
+                          sort: col.sortKey,
+                          dir: sort === col.sortKey && dir === "asc" ? "desc" : "asc",
+                          page: 1,
+                        })
+                      }
+                    >
+                      {col.label}
+                      <ArrowUpDown
+                        className={cn(
+                          "size-3",
+                          sort === col.sortKey ? "opacity-100" : "opacity-50"
+                        )}
+                      />
+                    </button>
+                  ) : (
+                    col.label
+                  )}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>

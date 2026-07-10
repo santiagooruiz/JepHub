@@ -252,6 +252,11 @@ export function BacklogTable({
   ];
 
   return (
-    <DataTable columns={columns} data={data} searchPlaceholder="Buscar en backlog…" />
+    <DataTable
+      columns={columns}
+      data={data}
+      searchPlaceholder="Buscar en backlog…"
+      exportName="backlog-diseno"
+    />
   );
 }

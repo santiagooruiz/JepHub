@@ -47,6 +47,47 @@ function buildSearch(request: sql.Request, q: string): string {
 /** Filtro por tipo desde las tarjetas de resumen del listado. */
 export type ErpClientTipoFiltro = "empresas" | "personas" | "prospectos";
 
+/** Columnas ordenables del listado (whitelist → expresión SQL). */
+export type ErpClientSortKey =
+  | "nombre"
+  | "documento"
+  | "email"
+  | "telefono"
+  | "ciudad"
+  | "asesor"
+  | "estado"
+  | "fechaRegistro";
+
+export const ERP_CLIENT_SORT_KEYS: ErpClientSortKey[] = [
+  "nombre",
+  "documento",
+  "email",
+  "telefono",
+  "ciudad",
+  "asesor",
+  "estado",
+  "fechaRegistro",
+];
+
+// LTRIM/RTRIM: hay valores con espacios iniciales en el ERP que romperían el
+// orden alfabético si se ordena por la columna char cruda.
+const SORT_EXPRS: Record<ErpClientSortKey, string> = {
+  nombre: "LTRIM(RTRIM(C.NOMBRE))",
+  documento: "LTRIM(RTRIM(C.NIT))",
+  email: "LTRIM(RTRIM(C.EMAIL))",
+  telefono: "LTRIM(RTRIM(C.TEL1))",
+  ciudad: "LTRIM(RTRIM(C.CIUDADPRV))",
+  asesor: "LTRIM(RTRIM(V.NOMBRE))",
+  estado: "C.ISPROSPECT",
+  fechaRegistro: "C.FECHAING",
+};
+
+function buildOrderBy(sort?: ErpClientSortKey, dir?: "asc" | "desc"): string {
+  const expr = sort ? SORT_EXPRS[sort] : undefined;
+  if (!expr) return "ORDER BY C.FECHAING DESC, C.NIT";
+  return `ORDER BY ${expr} ${dir === "desc" ? "DESC" : "ASC"}, C.NIT`;
+}
+
 function buildTipoFilter(tipo?: ErpClientTipoFiltro): string {
   switch (tipo) {
     case "empresas":
@@ -85,6 +126,9 @@ export async function getErpClients(opts: {
   codvens?: string[];
   /** Filtro de las tarjetas: empresas / personas / prospectos. */
   tipo?: ErpClientTipoFiltro;
+  /** Ordenamiento por columna (whitelist) y dirección. */
+  sort?: ErpClientSortKey;
+  dir?: "asc" | "desc";
 }): Promise<{ rows: ErpClientRow[]; total: number }> {
   const pool = await getErpPool();
   const page = Math.max(1, opts.page ?? 1);
@@ -101,6 +145,19 @@ export async function getErpClients(opts: {
 
   // COUNT(*) OVER() devuelve el total del set filtrado en la misma consulta.
   const res = await request.query(`
+    ${CLIENT_SELECT},
+      COUNT(*) OVER()                  AS total
+    ${CLIENT_FROM}
+    WHERE C.ESCLIENTE = 'S' ${filtro} ${scope} ${tipoFiltro}
+    ${buildOrderBy(opts.sort, opts.dir)}
+    OFFSET @offset ROWS FETCH NEXT @size ROWS ONLY`);
+
+  const rows = res.recordset.map(mapClientRow);
+  const total = Number(res.recordset[0]?.total ?? 0);
+  return { rows, total };
+}
+
+const CLIENT_SELECT = `
     SELECT
       LTRIM(RTRIM(C.NIT))              AS nit,
       LTRIM(RTRIM(C.NOMBRE))           AS nombre,
@@ -110,27 +167,46 @@ export async function getErpClients(opts: {
       LTRIM(RTRIM(C.CIUDADPRV))        AS ciudad,
       LTRIM(RTRIM(V.NOMBRE))           AS asesor,
       C.ISPROSPECT                     AS isprospect,
-      CONVERT(varchar, C.FECHAING, 23) AS fecha,
-      COUNT(*) OVER()                  AS total
-    FROM MTPROCLI C
-    LEFT JOIN VENDEN V ON V.CODVEN = C.VENDEDOR
-    WHERE C.ESCLIENTE = 'S' ${filtro} ${scope} ${tipoFiltro}
-    ORDER BY C.FECHAING DESC, C.NIT
-    OFFSET @offset ROWS FETCH NEXT @size ROWS ONLY`);
+      CONVERT(varchar, C.FECHAING, 23) AS fecha`;
 
-  const rows: ErpClientRow[] = res.recordset.map((r) => ({
-    nit: r.nit ?? "",
-    nombre: r.nombre || "(sin nombre)",
+const CLIENT_FROM = `
+    FROM MTPROCLI C
+    LEFT JOIN VENDEN V ON V.CODVEN = C.VENDEDOR`;
+
+function mapClientRow(r: Record<string, unknown>): ErpClientRow {
+  return {
+    nit: (r.nit as string) ?? "",
+    nombre: (r.nombre as string) || "(sin nombre)",
     tipo: r.personanj === 2 ? "Empresa" : "Persona",
-    email: r.email || "",
-    telefono: r.telefono || "",
-    ciudad: r.ciudad || "",
-    asesor: r.asesor || "",
+    email: (r.email as string) || "",
+    telefono: (r.telefono as string) || "",
+    ciudad: (r.ciudad as string) || "",
+    asesor: (r.asesor as string) || "",
     estado: r.isprospect ? "Prospecto" : "Cliente",
-    fechaRegistro: cleanErpDate(r.fecha),
-  }));
-  const total = Number(res.recordset[0]?.total ?? 0);
-  return { rows, total };
+    fechaRegistro: cleanErpDate(r.fecha as string),
+  };
+}
+
+/** Todas las filas del set filtrado (para exportar a Excel; tope 20.000). */
+export async function getErpClientsExport(opts: {
+  q?: string;
+  codvens?: string[];
+  tipo?: ErpClientTipoFiltro;
+  sort?: ErpClientSortKey;
+  dir?: "asc" | "desc";
+}): Promise<ErpClientRow[]> {
+  const pool = await getErpPool();
+  const request = pool.request();
+  const filtro = buildSearch(request, opts.q ?? "");
+  const scope = buildCodvenScope(request, opts.codvens);
+  const tipoFiltro = buildTipoFilter(opts.tipo);
+
+  const res = await request.query(`
+    ${CLIENT_SELECT.replace("SELECT", "SELECT TOP 20000")}
+    ${CLIENT_FROM}
+    WHERE C.ESCLIENTE = 'S' ${filtro} ${scope} ${tipoFiltro}
+    ${buildOrderBy(opts.sort, opts.dir)}`);
+  return res.recordset.map(mapClientRow);
 }
 
 /** Totales para las tarjetas de resumen (respetan búsqueda y alcance por asesor). */

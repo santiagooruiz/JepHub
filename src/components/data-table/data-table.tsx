@@ -11,10 +11,11 @@ import {
   getSortedRowModel,
   useReactTable,
 } from "@tanstack/react-table";
-import { ArrowUpDown, ChevronLeft, ChevronRight, Search } from "lucide-react";
+import { ArrowUpDown, ChevronLeft, ChevronRight, Download, Search } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { downloadExcel } from "@/lib/export";
 
 interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[];
@@ -22,6 +23,8 @@ interface DataTableProps<TData, TValue> {
   searchPlaceholder?: string;
   /** Controles extra (filtros, export…) junto al buscador. */
   toolbar?: React.ReactNode;
+  /** Nombre del archivo al exportar a Excel; sin él no se muestra el botón. */
+  exportName?: string;
 }
 
 export function DataTable<TData, TValue>({
@@ -29,6 +32,7 @@ export function DataTable<TData, TValue>({
   data,
   searchPlaceholder = "Buscar…",
   toolbar,
+  exportName,
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = React.useState("");
@@ -48,6 +52,24 @@ export function DataTable<TData, TValue>({
 
   const { pageIndex, pageSize } = table.getState().pagination;
 
+  // Exporta las filas visibles (con búsqueda y orden aplicados, todas las
+  // páginas) usando las columnas con accessorKey y encabezado de texto.
+  function handleExport() {
+    const cols = table
+      .getAllLeafColumns()
+      .filter(
+        (c) =>
+          "accessorKey" in c.columnDef && typeof c.columnDef.header === "string"
+      );
+    downloadExcel(
+      exportName ?? "export",
+      cols.map((c) => c.columnDef.header as string),
+      table
+        .getPrePaginationRowModel()
+        .rows.map((r) => cols.map((c) => r.getValue(c.id)))
+    );
+  }
+
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -62,6 +84,11 @@ export function DataTable<TData, TValue>({
         </div>
         {toolbar}
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          {exportName && (
+            <Button type="button" variant="outline" size="sm" onClick={handleExport}>
+              <Download className="size-4" /> Excel
+            </Button>
+          )}
           <span>Mostrar</span>
           <select
             value={pageSize}

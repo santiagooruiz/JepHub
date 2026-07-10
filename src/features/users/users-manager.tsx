@@ -2,11 +2,13 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { type ColumnDef } from "@tanstack/react-table";
 import { Pencil } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { DataTable } from "@/components/data-table/data-table";
 import { UserStatusToggle } from "./status-toggle";
 
 export type UserRow = {
@@ -21,11 +23,20 @@ export type UserRow = {
 
 export type RoleCard = { id: string; name: string; count: number };
 
-function StatusBadge({ status }: { status: string }) {
+const STATUS_LABEL: Record<UserRow["status"], string> = {
+  ACTIVE: "ACTIVO",
+  INACTIVE: "INACTIVO",
+  PASSWORD_CHANGE: "CAMBIO DE CONTRASEÑA",
+};
+
+function StatusBadge({ status }: { status: UserRow["status"] }) {
   if (status === "ACTIVE") return <Badge variant="success">ACTIVO</Badge>;
-  if (status === "PASSWORD_CHANGE") return <Badge variant="default">CAMBIO DE CONTRASEÑA</Badge>;
+  if (status === "PASSWORD_CHANGE")
+    return <Badge variant="default">CAMBIO DE CONTRASEÑA</Badge>;
   return <Badge variant="muted">INACTIVO</Badge>;
 }
+
+type Row = UserRow & { estadoLabel: string };
 
 export function UsersManager({
   roles,
@@ -39,7 +50,75 @@ export function UsersManager({
   currentUserId: string;
 }) {
   const [selected, setSelected] = React.useState<string | null>(null);
-  const filtered = selected ? users.filter((u) => u.roleId === selected) : users;
+
+  const rows: Row[] = React.useMemo(
+    () =>
+      (selected ? users.filter((u) => u.roleId === selected) : users).map(
+        (u) => ({ ...u, estadoLabel: STATUS_LABEL[u.status] })
+      ),
+    [users, selected]
+  );
+
+  const columns: ColumnDef<Row>[] = [
+    {
+      accessorKey: "name",
+      header: "Nombre",
+      cell: ({ row }) => <span className="font-medium">{row.original.name}</span>,
+    },
+    {
+      accessorKey: "email",
+      header: "Email",
+      cell: ({ row }) => (
+        <span className="text-muted-foreground">{row.original.email}</span>
+      ),
+    },
+    {
+      accessorKey: "cargoActual",
+      header: "Cargo",
+      cell: ({ row }) => (
+        <span className="text-muted-foreground">
+          {row.original.cargoActual ?? "—"}
+        </span>
+      ),
+    },
+    {
+      accessorKey: "roleName",
+      header: "Perfil",
+      cell: ({ row }) => row.original.roleName ?? "—",
+    },
+    {
+      accessorKey: "estadoLabel",
+      header: "Estado",
+      cell: ({ row }) => <StatusBadge status={row.original.status} />,
+    },
+    ...(canEdit
+      ? ([
+          {
+            id: "acciones",
+            header: "",
+            cell: ({ row }) => (
+              <div className="flex items-center justify-end gap-1">
+                <Link
+                  href={`/configuracion/usuarios/${row.original.id}/editar`}
+                  className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent"
+                  aria-label="Editar usuario"
+                >
+                  <Pencil className="size-4" />
+                </Link>
+                {row.original.id === currentUserId ? (
+                  <span className="text-xs text-muted-foreground">Tú</span>
+                ) : (
+                  <UserStatusToggle
+                    userId={row.original.id}
+                    status={row.original.status}
+                  />
+                )}
+              </div>
+            ),
+          },
+        ] as ColumnDef<Row>[])
+      : []),
+  ];
 
   return (
     <div>
@@ -90,59 +169,13 @@ export function UsersManager({
         </Card>
       </div>
 
-      {/* Tabla de usuarios (filtrada por el rol seleccionado). */}
-      <Card className="overflow-x-auto">
-        <table className="w-full border-collapse text-sm">
-          <thead>
-            <tr className="border-b bg-muted/40 text-left">
-              <th className="px-3 py-2 font-medium">Nombre</th>
-              <th className="px-3 py-2 font-medium">Email</th>
-              <th className="px-3 py-2 font-medium">Cargo</th>
-              <th className="px-3 py-2 font-medium">Perfil</th>
-              <th className="px-3 py-2 font-medium">Estado</th>
-              {canEdit && <th className="px-3 py-2 font-medium">Acciones</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((u) => (
-              <tr key={u.id} className="border-b last:border-0 hover:bg-muted/20">
-                <td className="px-3 py-2 font-medium">{u.name}</td>
-                <td className="px-3 py-2 text-muted-foreground">{u.email}</td>
-                <td className="px-3 py-2 text-muted-foreground">{u.cargoActual ?? "—"}</td>
-                <td className="px-3 py-2">{u.roleName ?? "—"}</td>
-                <td className="px-3 py-2">
-                  <StatusBadge status={u.status} />
-                </td>
-                {canEdit && (
-                  <td className="px-3 py-2">
-                    <div className="flex items-center gap-1">
-                      <Link
-                        href={`/configuracion/usuarios/${u.id}/editar`}
-                        className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent"
-                        aria-label="Editar usuario"
-                      >
-                        <Pencil className="size-4" />
-                      </Link>
-                      {u.id === currentUserId ? (
-                        <span className="text-xs text-muted-foreground">Tú</span>
-                      ) : (
-                        <UserStatusToggle userId={u.id} status={u.status} />
-                      )}
-                    </div>
-                  </td>
-                )}
-              </tr>
-            ))}
-            {filtered.length === 0 && (
-              <tr>
-                <td colSpan={canEdit ? 6 : 5} className="px-3 py-8 text-center text-muted-foreground">
-                  Sin usuarios en este rol.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </Card>
+      {/* Tabla con búsqueda, ordenamiento y exportación (filtrada por rol). */}
+      <DataTable
+        columns={columns}
+        data={rows}
+        searchPlaceholder="Buscar usuario…"
+        exportName="usuarios"
+      />
     </div>
   );
 }
