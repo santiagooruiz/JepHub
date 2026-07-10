@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { db } from "@/lib/db";
+import { deleteFile } from "@/lib/storage";
 import { requirePermission, requireUser } from "@/lib/guard";
 import { isAdmin, isAsesor } from "@/lib/auth";
 import { isErpDbConfigured } from "@/server/ofimatica/db";
@@ -443,10 +444,11 @@ export async function deleteAttachment(id: string): Promise<ActionResult> {
   const user = await requireUser();
   const att = await db.attachment.findFirst({
     where: { id, companyId: user.companyId },
-    select: { clientId: true, opportunityId: true },
+    select: { clientId: true, opportunityId: true, storageKey: true },
   });
   if (!att) return { ok: false, error: "Adjunto no encontrado." };
   await db.attachment.delete({ where: { id } });
+  if (att.storageKey) await deleteFile(att.storageKey);
   if (att.clientId) revalidatePath(`/clientes/${att.clientId}`);
   if (att.opportunityId) revalidatePath(`/oportunidades/${att.opportunityId}`);
   return { ok: true };

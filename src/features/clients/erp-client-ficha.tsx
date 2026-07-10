@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ChevronLeft, Eye, Truck, Wallet } from "lucide-react";
 
 import { db } from "@/lib/db";
+import { isStorageConfigured } from "@/lib/storage";
 import {
   getParamValues,
   ACTION_ACTIVITIES_FALLBACK,
@@ -277,11 +278,14 @@ export async function ErpClientFicha({
               <AttachmentsPanel
                 anchor={anchorInfo}
                 tipos={tiposArchivo}
+                canUpload={isStorageConfigured()}
                 attachments={(anchor?.attachments ?? []).map((a) => ({
                   id: a.id,
                   tipoArchivo: a.tipoArchivo,
                   observaciones: a.observaciones,
                   url: a.url,
+                  nombre: a.nombre,
+                  size: a.size,
                   createdAt: a.createdAt.toLocaleDateString("es-CO"),
                 }))}
               />

@@ -570,4 +570,4 @@ jep-hub/
 - **BI**: confirmar si Metabase embebido o reconstrucción con charts propios (coste vs control).
 - **Migración de datos** del CRM actual (opcional): si se requiere, planear ETL aparte.
 - **"PT"** en Backlog: confirmar significado exacto del prefijo con el negocio.
-- Storage de archivos: elegir R2 vs MinIO on-prem (coherente con despliegue).
+- Storage de archivos: ~~elegir R2 vs MinIO on-prem~~ **resuelto (2026-07)**: **MinIO on-prem** (contenedor en docker-compose, S3-compatible). Subida vía `POST /api/files`, descarga autenticada vía `GET /api/files/[id]`, cliente en `src/lib/storage.ts`; el binario nunca se expone público.

@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ChevronLeft, Pencil, Eye, Plus, Wallet } from "lucide-react";
 
 import { db } from "@/lib/db";
+import { isStorageConfigured } from "@/lib/storage";
 import { requirePermission } from "@/lib/guard";
 import {
   getParamValues,
@@ -324,11 +325,14 @@ export default async function ClienteFichaPage({
               <AttachmentsPanel
                 clientId={c.id}
                 tipos={tiposArchivo}
+                canUpload={isStorageConfigured()}
                 attachments={c.attachments.map((a) => ({
                   id: a.id,
                   tipoArchivo: a.tipoArchivo,
                   observaciones: a.observaciones,
                   url: a.url,
+                  nombre: a.nombre,
+                  size: a.size,
                   createdAt: a.createdAt.toLocaleDateString("es-CO"),
                 }))}
               />

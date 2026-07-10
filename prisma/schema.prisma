@@ -320,6 +320,12 @@ model Attachment {
   bucket        String     @default("archivos")
   observaciones String?
   url           String
+  // Subida binaria (MinIO/S3): clave en el bucket + metadatos del archivo.
+  // Si storageKey es null el adjunto es solo una URL registrada a mano.
+  storageKey    String?
+  nombre        String?
+  mimeType      String?
+  size          Int?
   // Aprobación del archivo (p.ej. ficha técnica en el Backlog Diseño)
   estado          String?   // APROBADA | RECHAZADA
   aprobadoPor     String?

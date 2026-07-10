@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ChevronLeft, Eye, Plus } from "lucide-react";
 
 import { db } from "@/lib/db";
+import { isStorageConfigured } from "@/lib/storage";
 import { requirePermission } from "@/lib/guard";
 import { advisorScope } from "@/lib/scope";
 import {
@@ -364,11 +365,14 @@ export default async function OportunidadDetallePage({
               <AttachmentsPanel
                 opportunityId={o.id}
                 tipos={tiposArchivo}
+                canUpload={isStorageConfigured()}
                 attachments={attachments.map((a) => ({
                   id: a.id,
                   tipoArchivo: a.tipoArchivo,
                   observaciones: a.observaciones,
                   url: a.url,
+                  nombre: a.nombre,
+                  size: a.size,
                   createdAt: a.createdAt.toLocaleDateString("es-CO"),
                 }))}
               />
