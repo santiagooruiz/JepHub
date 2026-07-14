@@ -10,9 +10,11 @@ import { isAdmin, isAsesor } from "@/lib/auth";
 import { isErpDbConfigured } from "@/server/ofimatica/db";
 import {
   ERP_CLIENT_SORT_KEYS,
+  getErpCiudades,
   getErpClientByNit,
   getErpClientsExport,
   insertErpClient,
+  updateErpClient,
   updateErpClientContacts,
   type ErpClientSortKey,
   type ErpClientTipoFiltro,
@@ -29,7 +31,6 @@ const nullableStr = z
 const clientSchema = z.object({
   id: z.string().optional(),
   personType: z.enum(["NATURAL", "JURIDICA"]),
-  estado: z.string().min(1),
   nombres: nullableStr,
   apellidos: nullableStr,
   nombreComercial: nullableStr,
@@ -67,14 +68,16 @@ export async function saveClient(input: unknown): Promise<ActionResult> {
     return { ok: false, error: "La razón social es obligatoria para persona jurídica." };
   }
 
-  // Asesor, lista de precio y canal solo los controla el administrador.
+  // Asesor y lista de precio solo los controla el administrador; el canal lo
+  // puede fijar cualquier rol (como en el CRM original).
   const admin = isAdmin(user);
-  const { id, codven, codprecio, canal, ...base } = d;
+  const { id, codven, codprecio, ...base } = d;
 
   if (id) {
-    // Editar. Un no-admin no puede tocar asesor/lista de precio/canal: se omiten
-    // del update para preservar los valores existentes.
-    const restricted = admin ? { codven, codprecio, canal } : {};
+    // Editar. Un no-admin no puede tocar asesor/lista de precio: se omiten del
+    // update para preservar los valores existentes. El estado no se toca aquí
+    // (lo mueve el pipeline, no el formulario).
+    const restricted = admin ? { codven, codprecio } : {};
     await db.client.updateMany({
       where: { id, companyId: user.companyId },
       data: { ...base, ...restricted },
@@ -99,7 +102,6 @@ export async function saveClient(input: unknown): Promise<ActionResult> {
       effCodven = user.codvens[0] ?? null;
     }
     const effCodprecio = admin ? codprecio : "2";
-    const effCanal = admin ? canal : null;
 
     const nombre =
       d.personType === "JURIDICA"
@@ -119,7 +121,8 @@ export async function saveClient(input: unknown): Promise<ActionResult> {
           email: d.email,
           telefono: d.telefono,
           direccion: d.direccion,
-          esProspecto: d.estado === "Prospecto",
+          // El alta desde JEP-Hub siempre es "Registrar Prospecto".
+          esProspecto: true,
           codven: effCodven,
           codprecio: effCodprecio,
         });
@@ -137,9 +140,9 @@ export async function saveClient(input: unknown): Promise<ActionResult> {
     await db.client.create({
       data: {
         ...base,
+        estado: "Prospecto",
         codven: effCodven,
         codprecio: effCodprecio,
-        canal: effCanal,
         companyId: user.companyId,
         numero: (last?.numero ?? 0) + 1,
       },
@@ -234,6 +237,110 @@ export async function exportErpClients(input: {
     const message = err instanceof Error ? err.message : "Error desconocido";
     return { ok: false, error: `No se pudo exportar: ${message}` };
   }
+}
+
+// Mismos campos del formulario local, menos id/numeroDocumento (el NIT es la PK
+// del ERP y no se cambia) y con `nit` como llave.
+const erpClientSchema = clientSchema
+  .omit({ id: true, numeroDocumento: true })
+  .extend({ nit: z.string().min(1) });
+
+/**
+ * Edita un cliente del ERP con el formulario completo. Los campos que viven en
+ * MTPROCLI (nombre, tipo de persona, email, teléfono, dirección, ciudad y —solo
+ * admin— asesor y lista de precio) se escriben en el ERP; los conceptos propios
+ * de JEP-Hub (canal, sector/subsector, observaciones, etc.) se guardan en el
+ * ancla local de PostgreSQL (find-or-create, relación por NIT).
+ */
+export async function saveErpClient(input: unknown): Promise<ActionResult> {
+  const user = await requirePermission("edit", "clients");
+  const parsed = erpClientSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Datos inválidos" };
+  }
+  const d = parsed.data;
+  const { nit, codven, codprecio, ...base } = d;
+
+  if (d.personType === "NATURAL" && !d.nombres) {
+    return { ok: false, error: "Los nombres son obligatorios para persona natural." };
+  }
+  if (d.personType === "JURIDICA" && !d.razonSocial) {
+    return { ok: false, error: "La razón social es obligatoria para persona jurídica." };
+  }
+
+  const admin = isAdmin(user);
+  const esEmpresa = d.personType === "JURIDICA";
+  const nombre = esEmpresa
+    ? d.razonSocial || d.nombreComercial || ""
+    : [d.nombres, d.apellidos].filter(Boolean).join(" ");
+
+  try {
+    // Valida existencia y alcance por asesor antes de escribir.
+    const erp = await getScopedErpClient(user, nit);
+    if (!erp) return { ok: false, error: "Cliente no encontrado." };
+
+    // Ciudad: el formulario maneja el nombre; el ERP guarda el código
+    // (MTPROCLI.CIUDAD → CIUDAD.CODCIUDAD) más el nombre en CIUDADPRV.
+    // Solo se toca si el nombre elegido existe en el catálogo del ERP.
+    let ciudad: { codciudad: string; nombre: string } | undefined;
+    if (d.ciudad && d.ciudad !== erp.ciudad) {
+      ciudad = (await getErpCiudades()).find(
+        (c) => c.nombre.localeCompare(d.ciudad!, "es", { sensitivity: "base" }) === 0
+      );
+    }
+
+    await updateErpClient({
+      nit,
+      nombre,
+      esEmpresa,
+      nombres: d.nombres,
+      apellidos: d.apellidos,
+      email: d.email,
+      telefono: d.telefono,
+      direccion: d.direccion,
+      // Asesor y lista de precio: solo-admin (undefined = no tocar en el ERP).
+      codven: admin ? codven ?? "" : undefined,
+      codprecio: admin ? codprecio ?? "" : undefined,
+      ciudad,
+    });
+
+    // Ancla local (find-or-create por NIT): guarda los conceptos de JEP-Hub y
+    // mantiene espejados los campos compartidos.
+    const restricted = admin ? { codven, codprecio } : {};
+    const anchor = await db.client.findFirst({
+      where: { companyId: user.companyId, numeroDocumento: nit, deletedAt: null },
+      select: { id: true },
+    });
+    if (anchor) {
+      await db.client.update({
+        where: { id: anchor.id },
+        data: { ...base, ...restricted },
+      });
+    } else {
+      const last = await db.client.findFirst({
+        where: { companyId: user.companyId },
+        orderBy: { numero: "desc" },
+        select: { numero: true },
+      });
+      await db.client.create({
+        data: {
+          ...base,
+          ...restricted,
+          companyId: user.companyId,
+          numero: (last?.numero ?? 0) + 1,
+          numeroDocumento: nit,
+          estado: erp.estado,
+        },
+      });
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Error desconocido";
+    return { ok: false, error: `No se pudo guardar en el ERP: ${message}` };
+  }
+
+  revalidatePath("/clientes");
+  revalidatePath(`/clientes/${nit}`);
+  return { ok: true };
 }
 
 export async function deleteClient(id: string): Promise<ActionResult> {

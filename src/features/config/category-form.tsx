@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { saveCategory } from "./actions";
 
 const ENTITIES = ["client", "channel", "sector", "document_type", "file_type"];
@@ -47,17 +48,12 @@ export function CategoryForm({
     <form onSubmit={onSubmit} className="space-y-4">
       <div className="space-y-1.5">
         <label className="text-sm font-medium">Entidad</label>
-        <select
+        <SearchableSelect
           value={entity}
-          onChange={(e) => setEntity(e.target.value)}
-          className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          {ENTITIES.map((e) => (
-            <option key={e} value={e}>
-              {e}
-            </option>
-          ))}
-        </select>
+          onChange={setEntity}
+          options={ENTITIES}
+          clearable={false}
+        />
       </div>
       <div className="space-y-1.5">
         <label className="text-sm font-medium">Nombre</label>

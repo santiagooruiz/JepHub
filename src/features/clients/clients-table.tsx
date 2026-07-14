@@ -7,6 +7,7 @@ import { Pencil, Eye, Download } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { DataTable } from "@/components/data-table/data-table";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -20,9 +21,6 @@ const EMBUDO: { estado: string; label: string }[] = [
   { estado: "Cliente", label: "Clientes" },
   { estado: "Gestión Perdida", label: "Gestión Perdidas" },
 ];
-
-const selectCls =
-  "h-9 rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 function exportCsv(rows: ClientRow[]) {
   const headers = [
@@ -281,20 +279,17 @@ export function ClientsTable({
         searchPlaceholder="Buscar cliente…"
         toolbar={
           <div className="flex items-center gap-2">
-            <select
+            <SearchableSelect
               value={asesor}
-              onChange={(e) => setAsesor(e.target.value)}
-              className={selectCls}
+              onChange={setAsesor}
+              options={[
+                ...asesores,
+                ...(tieneSinAsignar ? [{ value: "__sin__", label: "Sin asignar" }] : []),
+              ]}
+              placeholder="Todos los asesores"
+              className="w-52"
               aria-label="Filtrar por asesor"
-            >
-              <option value="">Todos los asesores</option>
-              {asesores.map((a) => (
-                <option key={a} value={a}>
-                  {a}
-                </option>
-              ))}
-              {tieneSinAsignar && <option value="__sin__">Sin asignar</option>}
-            </select>
+            />
             <Button
               type="button"
               variant="outline"

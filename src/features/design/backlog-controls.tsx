@@ -8,6 +8,7 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   updateDesignState,
   assignDesigner,
@@ -17,8 +18,6 @@ import {
 } from "./actions";
 import { BACKLOG_ESTADOS } from "./types";
 
-const selectCls =
-  "h-8 w-full rounded-md border border-input bg-background px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring";
 const TA =
   "w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
@@ -26,26 +25,22 @@ export function DesignStateSelect({ id, estado }: { id: string; estado: string }
   const router = useRouter();
   const [pending, start] = React.useTransition();
   return (
-    <select
+    <SearchableSelect
       value={estado}
       disabled={pending}
-      onChange={(e) => {
-        const v = e.target.value;
+      onChange={(v) =>
         start(async () => {
           const res = await updateDesignState(id, v);
           if (res.ok) toast.success(`Estado actualizado a ${v}`);
           else toast.error(res.error);
           router.refresh();
-        });
-      }}
-      className={selectCls}
-    >
-      {BACKLOG_ESTADOS.map((s) => (
-        <option key={s} value={s}>
-          {s}
-        </option>
-      ))}
-    </select>
+        })
+      }
+      options={[...BACKLOG_ESTADOS]}
+      clearable={false}
+      className="h-8 px-2"
+      aria-label="Estado de diseño"
+    />
   );
 }
 
@@ -61,27 +56,22 @@ export function AssignDesigner({
   const router = useRouter();
   const [pending, start] = React.useTransition();
   return (
-    <select
+    <SearchableSelect
       value={designerId ?? ""}
       disabled={pending}
-      onChange={(e) => {
-        const v = e.target.value;
+      onChange={(v) =>
         start(async () => {
           const res = await assignDesigner(id, v);
           if (res.ok) toast.success("Diseñador asignado");
           else toast.error(res.error);
           router.refresh();
-        });
-      }}
-      className={selectCls}
-    >
-      <option value="">— Sin asignar —</option>
-      {users.map((u) => (
-        <option key={u.id} value={u.id}>
-          {u.name}
-        </option>
-      ))}
-    </select>
+        })
+      }
+      options={users.map((u) => ({ value: u.id, label: u.name }))}
+      placeholder="— Sin asignar —"
+      className="h-8 px-2"
+      aria-label="Diseñador"
+    />
   );
 }
 

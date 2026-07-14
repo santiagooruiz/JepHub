@@ -7,19 +7,21 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
-import { saveClient } from "./actions";
+import { SearchableSelect } from "@/components/ui/searchable-select";
+import { saveClient, saveErpClient } from "./actions";
 
 export type ClientOptions = {
   asesores: { codven: string; nombre: string }[];
   priceLists: { codprecio: string; nombre: string }[];
   sectors: { id: string; name: string; subsectors: { id: string; name: string }[] }[];
   channels: string[];
+  /** Ciudades del ERP; si viene vacío, Ciudad se captura como texto libre. */
+  ciudades: string[];
 };
 
 export type ClientEditing = {
   id: string;
   personType: "NATURAL" | "JURIDICA";
-  estado: string;
   nombres: string | null;
   apellidos: string | null;
   nombreComercial: string | null;
@@ -40,7 +42,6 @@ export type ClientEditing = {
   codven: string | null;
 };
 
-const ESTADOS = ["Prospecto", "Gestión Cotización", "Cliente", "Gestión Perdida"];
 const TIPOS_DOC = ["CC", "NIT", "CE", "PAS"];
 
 function Field({
@@ -58,26 +59,25 @@ function Field({
   );
 }
 
-const selectCls =
-  "h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring";
-
 export function ClientForm({
   options,
   editing,
   isAdmin = false,
   misCodvens = [],
+  erpNit,
 }: {
   options: ClientOptions;
   editing?: ClientEditing;
-  /** Los campos Asesor, Lista de precio y Canal solo se muestran al admin. */
+  /** Los campos Asignar Asesor y Lista de precio solo se muestran al admin. */
   isAdmin?: boolean;
   /** Codvens del asesor logueado (con nombre). Si tiene >1, elige la sede al crear. */
   misCodvens?: { codven: string; nombre: string }[];
+  /** Cliente del ERP: guarda vía saveErpClient (escribe en MTPROCLI + ancla local). */
+  erpNit?: string;
 }) {
   const router = useRouter();
   const [f, setF] = React.useState<Omit<ClientEditing, "id">>({
     personType: editing?.personType ?? "JURIDICA",
-    estado: editing?.estado ?? "Prospecto",
     nombres: editing?.nombres ?? "",
     apellidos: editing?.apellidos ?? "",
     nombreComercial: editing?.nombreComercial ?? "",
@@ -111,10 +111,12 @@ export function ClientForm({
     e.preventDefault();
     setError(null);
     start(async () => {
-      const res = await saveClient({ id: editing?.id, ...f });
+      const res = erpNit
+        ? await saveErpClient({ nit: erpNit, ...f })
+        : await saveClient({ id: editing?.id, ...f });
       if (res.ok) {
         toast.success(editing ? "Cliente modificado" : "Cliente registrado");
-        router.push("/clientes");
+        router.push(erpNit ? `/clientes/${encodeURIComponent(erpNit)}` : "/clientes");
         router.refresh();
       } else {
         setError(res.error);
@@ -129,61 +131,46 @@ export function ClientForm({
       <Card className="p-4">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <Field label="Tipo">
-            <select
+            <SearchableSelect
               value={f.personType}
-              onChange={(e) =>
-                set("personType", e.target.value as "NATURAL" | "JURIDICA")
-              }
-              className={selectCls}
-            >
-              <option value="JURIDICA">Persona Jurídica</option>
-              <option value="NATURAL">Persona Natural</option>
-            </select>
+              onChange={(v) => set("personType", v as "NATURAL" | "JURIDICA")}
+              options={[
+                { value: "JURIDICA", label: "Persona Jurídica" },
+                { value: "NATURAL", label: "Persona Natural" },
+              ]}
+              clearable={false}
+            />
           </Field>
           {isAdmin ? (
             <Field label="Asignar Asesor">
-              <select
+              <SearchableSelect
                 value={f.codven ?? ""}
-                onChange={(e) => set("codven", e.target.value)}
-                className={selectCls}
-              >
-                <option value="">Seleccione</option>
-                {options.asesores.map((a) => (
-                  <option key={a.codven} value={a.codven}>
-                    {a.nombre}
-                  </option>
-                ))}
-              </select>
+                onChange={(v) => set("codven", v)}
+                options={options.asesores.map((a) => ({
+                  value: a.codven,
+                  label: a.nombre,
+                }))}
+              />
             </Field>
-          ) : misCodvens.length > 1 ? (
-            // Asesor con varias sedes: elige cuál aplica a este cliente.
+          ) : misCodvens.length > 1 && !editing ? (
+            // Asesor con varias sedes: elige cuál aplica a este cliente al crear.
             <Field label="Sede / Asesor">
-              <select
+              <SearchableSelect
                 value={f.codven ?? ""}
-                onChange={(e) => set("codven", e.target.value)}
-                className={selectCls}
-              >
-                <option value="">Seleccione</option>
-                {misCodvens.map((a) => (
-                  <option key={a.codven} value={a.codven}>
-                    {a.nombre}
-                  </option>
-                ))}
-              </select>
+                onChange={(v) => set("codven", v)}
+                options={misCodvens.map((a) => ({
+                  value: a.codven,
+                  label: a.nombre,
+                }))}
+              />
             </Field>
           ) : null}
-          <Field label="Estado">
-            <select
-              value={f.estado}
-              onChange={(e) => set("estado", e.target.value)}
-              className={selectCls}
-            >
-              {ESTADOS.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
+          <Field label="Canal">
+            <SearchableSelect
+              value={f.canal ?? ""}
+              onChange={(v) => set("canal", v)}
+              options={options.channels}
+            />
           </Field>
         </div>
       </Card>
@@ -218,16 +205,17 @@ export function ClientForm({
             <Input value={f.telefono ?? ""} onChange={(e) => set("telefono", e.target.value)} />
           </Field>
           <Field label="Tipo Documento">
-            <select value={f.tipoDocumento ?? ""} onChange={(e) => set("tipoDocumento", e.target.value)} className={selectCls}>
-              <option value="">Seleccione</option>
-              {TIPOS_DOC.map((t) => (
-                <option key={t} value={t}>{t}</option>
-              ))}
-            </select>
+            <SearchableSelect
+              value={f.tipoDocumento ?? ""}
+              onChange={(v) => set("tipoDocumento", v)}
+              options={TIPOS_DOC}
+            />
           </Field>
           <Field label={editing ? "Número Documento" : "Número Documento (NIT) *"}>
             <Input
               required={!editing}
+              // El NIT es la llave con el ERP (PK de MTPROCLI): no se cambia aquí.
+              disabled={Boolean(erpNit)}
               value={f.numeroDocumento ?? ""}
               onChange={(e) => set("numeroDocumento", e.target.value)}
             />
@@ -249,7 +237,17 @@ export function ClientForm({
             <Input value={f.pais ?? ""} onChange={(e) => set("pais", e.target.value)} />
           </Field>
           <Field label="Ciudad">
-            <Input value={f.ciudad ?? ""} onChange={(e) => set("ciudad", e.target.value)} />
+            {options.ciudades.length > 0 ? (
+              // Un valor fuera del catálogo (texto libre heredado) se conserva:
+              // SearchableSelect lo antepone como opción.
+              <SearchableSelect
+                value={f.ciudad ?? ""}
+                onChange={(v) => set("ciudad", v)}
+                options={options.ciudades}
+              />
+            ) : (
+              <Input value={f.ciudad ?? ""} onChange={(e) => set("ciudad", e.target.value)} />
+            )}
           </Field>
           <div className="sm:col-span-2">
             <Field label="Observaciones">
@@ -267,54 +265,36 @@ export function ClientForm({
       {/* Información adicional */}
       <Card className="p-4">
         <h3 className="mb-4 font-semibold">Información adicional</h3>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {isAdmin && (
             <Field label="Lista de precio">
-              <select value={f.codprecio ?? ""} onChange={(e) => set("codprecio", e.target.value)} className={selectCls}>
-                <option value="">Seleccione</option>
-                {options.priceLists.map((p) => (
-                  <option key={p.codprecio} value={p.codprecio}>{p.nombre}</option>
-                ))}
-              </select>
-            </Field>
-          )}
-          {isAdmin && (
-            <Field label="Canal">
-              <select value={f.canal ?? ""} onChange={(e) => set("canal", e.target.value)} className={selectCls}>
-                <option value="">Seleccione</option>
-                {options.channels.map((c) => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
+              <SearchableSelect
+                value={f.codprecio ?? ""}
+                onChange={(v) => set("codprecio", v)}
+                options={options.priceLists.map((p) => ({
+                  value: p.codprecio,
+                  label: p.nombre,
+                }))}
+              />
             </Field>
           )}
           <Field label="Sector">
-            <select
+            <SearchableSelect
               value={f.sectorId ?? ""}
-              onChange={(e) => {
-                set("sectorId", e.target.value);
+              onChange={(v) => {
+                set("sectorId", v);
                 set("subSectorId", "");
               }}
-              className={selectCls}
-            >
-              <option value="">Seleccione</option>
-              {options.sectors.map((s) => (
-                <option key={s.id} value={s.id}>{s.name}</option>
-              ))}
-            </select>
+              options={options.sectors.map((s) => ({ value: s.id, label: s.name }))}
+            />
           </Field>
           <Field label="SubSector">
-            <select
+            <SearchableSelect
               value={f.subSectorId ?? ""}
-              onChange={(e) => set("subSectorId", e.target.value)}
-              className={selectCls}
+              onChange={(v) => set("subSectorId", v)}
+              options={subsectors.map((s) => ({ value: s.id, label: s.name }))}
               disabled={!f.sectorId}
-            >
-              <option value="">Seleccione</option>
-              {subsectors.map((s) => (
-                <option key={s.id} value={s.id}>{s.name}</option>
-              ))}
-            </select>
+            />
           </Field>
         </div>
       </Card>

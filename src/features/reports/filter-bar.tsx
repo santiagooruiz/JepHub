@@ -3,10 +3,8 @@
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { PERIODS } from "./filters";
-
-const selectCls =
-  "h-9 rounded-md border border-input bg-background px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 export function BiFilterBar({
   advisors,
@@ -31,24 +29,23 @@ export function BiFilterBar({
     <div className="flex flex-wrap items-center gap-2" data-pending={pending ? "" : undefined}>
       <label className="flex items-center gap-1.5 text-sm">
         <span className="text-muted-foreground">Periodo</span>
-        <select value={periodo} onChange={(e) => update("periodo", e.target.value)} className={selectCls}>
-          {PERIODS.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.label}
-            </option>
-          ))}
-        </select>
+        <SearchableSelect
+          value={periodo}
+          onChange={(v) => update("periodo", v)}
+          options={PERIODS.map((p) => ({ value: p.id, label: p.label }))}
+          clearable={false}
+          className="w-44"
+        />
       </label>
       <label className="flex items-center gap-1.5 text-sm">
         <span className="text-muted-foreground">Asesor</span>
-        <select value={asesor} onChange={(e) => update("asesor", e.target.value)} className={selectCls}>
-          <option value="">Todos</option>
-          {advisors.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.name}
-            </option>
-          ))}
-        </select>
+        <SearchableSelect
+          value={asesor}
+          onChange={(v) => update("asesor", v)}
+          options={advisors.map((a) => ({ value: a.id, label: a.name }))}
+          placeholder="Todos"
+          className="w-52"
+        />
       </label>
     </div>
   );

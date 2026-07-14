@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { saveAttachment, deleteAttachment, ensureClientAnchor } from "./actions";
 
 export type AttachmentItem = {
@@ -19,9 +20,6 @@ export type AttachmentItem = {
   size?: number | null;
   createdAt: string;
 };
-
-const selectCls =
-  "h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -153,19 +151,13 @@ export function AttachmentsPanel({
     <div className="space-y-4">
       <form onSubmit={submit} className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         {tipos?.length ? (
-          <select
+          <SearchableSelect
             value={tipo}
-            onChange={(e) => setTipo(e.target.value)}
-            className={selectCls}
+            onChange={setTipo}
+            options={tipos}
+            placeholder="Tipo de archivo…"
             aria-label="Tipo de archivo"
-          >
-            <option value="">Tipo de archivo…</option>
-            {tipos.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
+          />
         ) : (
           <Input
             placeholder="Tipo (ej. Orden de compra)"

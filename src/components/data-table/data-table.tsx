@@ -15,6 +15,7 @@ import { ArrowUpDown, ChevronLeft, ChevronRight, Download, Search } from "lucide
 
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { downloadExcel } from "@/lib/export";
 
 interface DataTableProps<TData, TValue> {
@@ -90,17 +91,14 @@ export function DataTable<TData, TValue>({
             </Button>
           )}
           <span>Mostrar</span>
-          <select
-            value={pageSize}
-            onChange={(e) => table.setPageSize(Number(e.target.value))}
-            className="h-8 rounded-md border border-input bg-background px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            {[10, 25, 50, 100].map((n) => (
-              <option key={n} value={n}>
-                {n}
-              </option>
-            ))}
-          </select>
+          <SearchableSelect
+            value={String(pageSize)}
+            onChange={(v) => table.setPageSize(Number(v))}
+            options={["10", "25", "50", "100"]}
+            clearable={false}
+            className="h-8 w-20 px-2"
+            aria-label="Filas por página"
+          />
         </div>
       </div>
 

@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { saveOpportunity } from "./actions";
 import type { OpportunityOptions } from "./queries";
 
@@ -107,11 +108,9 @@ export function OpportunityForm({
       <Card className="p-4">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Cliente" required className="sm:col-span-2">
-            <select
-              required
+            <SearchableSelect
               value={f.clientId}
-              onChange={(e) => {
-                const clientId = e.target.value;
+              onChange={(clientId) => {
                 // Al cambiar de cliente se limpia el contacto (pertenece al
                 // cliente anterior). El asesor lo asigna el servidor.
                 setF((p) => ({
@@ -120,15 +119,9 @@ export function OpportunityForm({
                   contacto: clientId === p.clientId ? p.contacto : "",
                 }));
               }}
-              className={selectCls}
-            >
-              <option value="">Seleccione</option>
-              {options.clients.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
+              options={options.clients.map((c) => ({ value: c.id, label: c.name }))}
+              aria-label="Cliente"
+            />
           </Field>
           <Field label="Nombre de la oportunidad" required className="sm:col-span-2">
             <Input value={f.nombre} onChange={(e) => set("nombre", e.target.value)} required />
@@ -161,24 +154,18 @@ export function OpportunityForm({
             />
           </Field>
           <Field label="Contacto">
-            <select
+            {/* Un valor guardado que ya no existe como contacto del cliente se
+                conserva: SearchableSelect lo antepone como opción. */}
+            <SearchableSelect
               value={f.contacto ?? ""}
-              onChange={(e) => set("contacto", e.target.value)}
-              className={selectCls}
+              onChange={(v) => set("contacto", v)}
+              options={clientContacts.map((c) => ({
+                value: c.nombre,
+                label: contactLabel(c),
+              }))}
               disabled={!f.clientId}
-            >
-              <option value="">Seleccione</option>
-              {/* Valor guardado que ya no existe como contacto del cliente. */}
-              {f.contacto &&
-                !clientContacts.some((c) => c.nombre === f.contacto) && (
-                  <option value={f.contacto}>{f.contacto}</option>
-                )}
-              {clientContacts.map((c, i) => (
-                <option key={`${c.nombre}-${i}`} value={c.nombre}>
-                  {contactLabel(c)}
-                </option>
-              ))}
-            </select>
+              aria-label="Contacto"
+            />
           </Field>
           <Field label="Observaciones" className="sm:col-span-2">
             <textarea

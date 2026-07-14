@@ -3,6 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { updateQuoteState } from "./actions";
 import { QUOTE_ESTADOS } from "./types";
 
@@ -17,23 +18,19 @@ export function QuoteStateSelect({
   const [pending, start] = React.useTransition();
 
   return (
-    <select
+    <SearchableSelect
       value={estado}
       disabled={pending}
-      onChange={(e) => {
-        const v = e.target.value;
+      onChange={(v) =>
         start(async () => {
           await updateQuoteState(id, v);
           router.refresh();
-        });
-      }}
-      className="h-8 rounded-md border border-input bg-background px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-    >
-      {QUOTE_ESTADOS.map((s) => (
-        <option key={s} value={s}>
-          {s}
-        </option>
-      ))}
-    </select>
+        })
+      }
+      options={[...QUOTE_ESTADOS]}
+      clearable={false}
+      className="h-8 w-auto min-w-40 px-2"
+      aria-label="Estado de la cotización"
+    />
   );
 }

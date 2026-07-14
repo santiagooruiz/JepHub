@@ -8,6 +8,7 @@ import interactionPlugin from "@fullcalendar/interaction";
 
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { cn } from "@/lib/utils";
 import { CHART_COLORS } from "./charts";
 import type { CalendarEvent } from "./queries";
@@ -66,18 +67,14 @@ export function ActivityCalendar({
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-[240px_1fr]">
       <Card className="h-fit p-4">
         <h3 className="mb-3 text-sm font-semibold">Selecciona un asesor</h3>
-        <select
+        <SearchableSelect
           value={asesorId}
-          onChange={(e) => setAsesorId(e.target.value)}
-          className="mb-4 h-9 w-full rounded-md border border-input bg-background px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <option value="">Todos los asesores</option>
-          {advisors.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.name}
-            </option>
-          ))}
-        </select>
+          onChange={setAsesorId}
+          options={advisors.map((a) => ({ value: a.id, label: a.name }))}
+          placeholder="Todos los asesores"
+          className="mb-4"
+          aria-label="Filtrar por asesor"
+        />
 
         <h3 className="mb-2 text-sm font-semibold">Opciones</h3>
         <div className="flex flex-wrap gap-1.5">

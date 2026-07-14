@@ -3,13 +3,22 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ArrowUpDown, ChevronLeft, ChevronRight, Download, Search } from "lucide-react";
+import {
+  ArrowUpDown,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  Eye,
+  Pencil,
+  Search,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { cn } from "@/lib/utils";
 import { downloadExcel } from "@/lib/export";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { exportErpClients } from "./actions";
@@ -21,9 +30,6 @@ const STATS: { key: keyof ErpClientStats; label: string }[] = [
   { key: "personas", label: "Personas" },
   { key: "prospectos", label: "Prospectos" },
 ];
-
-const selectCls =
-  "h-9 max-w-52 rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 // Encabezados de la tabla; sortKey debe existir en el whitelist del servidor.
 const COLUMNS: { label: string; sortKey: string | null }[] = [
@@ -52,6 +58,7 @@ export function ErpClientsTable({
   ciudades,
   asesores,
   stats,
+  canEdit,
 }: {
   rows: ErpClientRow[];
   total: number;
@@ -70,6 +77,8 @@ export function ErpClientsTable({
   ciudades: string[];
   asesores: { codven: string; nombre: string }[];
   stats: ErpClientStats;
+  /** Muestra el lápiz de edición por fila (permiso clients.edit). */
+  canEdit: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -179,33 +188,23 @@ export function ErpClientsTable({
               className="pl-8"
             />
           </div>
-          <select
+          <SearchableSelect
             value={ciudad ?? ""}
-            onChange={(e) => navigate({ ciudad: e.target.value || null, page: 1 })}
-            className={selectCls}
+            onChange={(v) => navigate({ ciudad: v || null, page: 1 })}
+            options={ciudades}
+            placeholder="Todas las ciudades"
+            className="w-52"
             aria-label="Filtrar por ciudad"
-          >
-            <option value="">Todas las ciudades</option>
-            {ciudades.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
+          />
           {asesores.length > 0 && (
-            <select
+            <SearchableSelect
               value={asesor ?? ""}
-              onChange={(e) => navigate({ asesor: e.target.value || null, page: 1 })}
-              className={selectCls}
+              onChange={(v) => navigate({ asesor: v || null, page: 1 })}
+              options={asesores.map((a) => ({ value: a.codven, label: a.nombre }))}
+              placeholder="Todos los asesores"
+              className="w-52"
               aria-label="Filtrar por asesor"
-            >
-              <option value="">Todos los asesores</option>
-              {asesores.map((a) => (
-                <option key={a.codven} value={a.codven}>
-                  {a.nombre}
-                </option>
-              ))}
-            </select>
+            />
           )}
         </div>
         <Button
@@ -290,6 +289,8 @@ export function ErpClientsTable({
                   )}
                 </th>
               ))}
+              {/* Acciones (fuera de COLUMNS: ese array alimenta el export a Excel) */}
+              <th className="px-3" style={{ height: "var(--row-h)" }} />
             </tr>
           </thead>
           <tbody>
@@ -332,11 +333,33 @@ export function ErpClientsTable({
                   <td className="tabular px-3 align-middle text-muted-foreground" style={cellPy}>
                     {c.fechaRegistro || "—"}
                   </td>
+                  <td className="px-3 align-middle" style={cellPy}>
+                    {c.nit && (
+                      <div className="flex justify-end gap-1">
+                        <Link
+                          href={`/clientes/${encodeURIComponent(c.nit)}`}
+                          className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent"
+                          aria-label="Ver"
+                        >
+                          <Eye className="size-4" />
+                        </Link>
+                        {canEdit && (
+                          <Link
+                            href={`/clientes/${encodeURIComponent(c.nit)}/editar`}
+                            className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent"
+                            aria-label="Editar"
+                          >
+                            <Pencil className="size-4" />
+                          </Link>
+                        )}
+                      </div>
+                    )}
+                  </td>
                 </tr>
               ))
             ) : (
               <tr>
-                <td colSpan={9} className="px-3 py-10 text-center text-muted-foreground">
+                <td colSpan={10} className="px-3 py-10 text-center text-muted-foreground">
                   Sin resultados.
                 </td>
               </tr>

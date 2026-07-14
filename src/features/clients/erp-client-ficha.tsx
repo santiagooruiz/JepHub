@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ChevronLeft, Eye, Truck, Wallet } from "lucide-react";
+import { ChevronLeft, Eye, Pencil, Truck, Wallet } from "lucide-react";
 
 import { db } from "@/lib/db";
 import { isStorageConfigured } from "@/lib/storage";
@@ -11,6 +11,7 @@ import {
 } from "@/lib/params";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { TabsLite } from "@/components/ui/tabs-lite";
 import { formatMoney } from "@/features/quotes/types";
 import { oppEstadoVariant } from "@/features/opportunities/types";
@@ -130,12 +131,14 @@ export async function ErpClientFicha({
   companyId,
   canCreateOpp,
   canManageContacts,
+  canEdit,
   allowedCodvens,
 }: {
   nit: string;
   companyId: string;
   canCreateOpp: boolean;
   canManageContacts: boolean;
+  canEdit: boolean;
   /** Alcance por asesor: si viene, el cliente debe pertenecer a uno de estos codven. */
   allowedCodvens?: string[];
 }) {
@@ -202,7 +205,16 @@ export async function ErpClientFicha({
             </Badge>
           )}
         </div>
-        {canCreateOpp && <NewOpportunityButton anchor={anchorInfo} />}
+        <div className="flex gap-2">
+          {canEdit && (
+            <Button asChild variant="outline">
+              <Link href={`/clientes/${encodeURIComponent(erp.nit)}/editar`}>
+                <Pencil className="size-4" /> Editar
+              </Link>
+            </Button>
+          )}
+          {canCreateOpp && <NewOpportunityButton anchor={anchorInfo} />}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[300px_1fr_340px]">

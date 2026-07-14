@@ -128,6 +128,7 @@ export default async function ClienteFichaPage({
         companyId={user.companyId}
         canCreateOpp={canCreateOpp}
         canManageContacts={canManageContacts}
+        canEdit={canEdit}
         // Un Asesor solo puede abrir clientes de sus propios codven.
         allowedCodvens={user.roleName === "Asesor" ? user.codvens : undefined}
       />

@@ -35,6 +35,7 @@ export default async function ClientesPage({
 }) {
   const user = await requirePermission("view", "clients");
   const canCreate = user.ability.can("create", "clients");
+  const canEdit = user.ability.can("edit", "clients");
   const admin = isAdmin(user);
 
   const sp = await searchParams;
@@ -104,6 +105,7 @@ export default async function ClientesPage({
         ciudades={ciudades}
         asesores={asesores}
         stats={stats}
+        canEdit={canEdit}
       />
     </div>
   );

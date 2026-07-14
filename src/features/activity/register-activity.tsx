@@ -5,11 +5,9 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { ensureClientAnchor } from "@/features/clients/actions";
 import { registerActivity } from "./actions";
-
-const selectCls =
-  "h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 export function RegisterActivity({
   entityType,
@@ -84,19 +82,12 @@ export function RegisterActivity({
         <label className="text-sm font-medium">
           Acción <span className="text-[hsl(var(--destructive))]">*</span>
         </label>
-        <select
-          required
+        <SearchableSelect
           value={accion}
-          onChange={(e) => setAccion(e.target.value)}
-          className={selectCls}
-        >
-          <option value="">Seleccione</option>
-          {acciones.map((a) => (
-            <option key={a} value={a}>
-              {a}
-            </option>
-          ))}
-        </select>
+          onChange={setAccion}
+          options={acciones}
+          aria-label="Acción"
+        />
       </div>
       <div className="space-y-1.5">
         <label className="text-sm font-medium">
@@ -107,7 +98,7 @@ export function RegisterActivity({
           type="datetime-local"
           value={fechaHora}
           onChange={(e) => setFechaHora(e.target.value)}
-          className={selectCls}
+          className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
       </div>
       <div className="space-y-1.5">

@@ -355,6 +355,7 @@ export async function getErpClientByNit(nit: string): Promise<ErpClientDetail | 
         LTRIM(RTRIM(C.PAGINAWEB))  AS web,
         LTRIM(RTRIM(V.NOMBRE))     AS asesor,
         LTRIM(RTRIM(C.VENDEDOR))   AS codven,
+        LTRIM(RTRIM(C.CODPRECIO))  AS codprecio,
         LTRIM(RTRIM(P.DESCRIPCIO)) AS listaPrecio,
         LTRIM(RTRIM(T.NOMBRE))     AS sector,
         LTRIM(RTRIM(CN.NOMBRE))    AS subSector,
@@ -371,7 +372,7 @@ export async function getErpClientByNit(nit: string): Promise<ErpClientDetail | 
         LTRIM(RTRIM(C.ZCONTAC4)) c4, LTRIM(RTRIM(C.ZCARGOCONT4)) car4, LTRIM(RTRIM(C.ZTELCONTAC4)) tel4c, LTRIM(RTRIM(C.ZDIRCONT4)) dir4
       FROM MTPROCLI C
       LEFT JOIN VENDEN V ON V.CODVEN = C.VENDEDOR
-      LEFT JOIN CIUDAD CD ON CD.CODCIUDAD = C.CDCIIU
+      LEFT JOIN CIUDAD CD ON CD.CODCIUDAD = C.CIUDAD
       LEFT JOIN CANAL CN ON CN.CODCANAL = C.CANAL
       LEFT JOIN MTPRECIO P ON P.CODPRECIO = C.CODPRECIO
       LEFT JOIN TIPOCL T ON T.CODTIPOCL = C.TIPOCLI
@@ -405,6 +406,7 @@ export async function getErpClientByNit(nit: string): Promise<ErpClientDetail | 
     web: r.web || "",
     asesor: r.asesor || "",
     codven: clean(r.codven),
+    codprecio: clean(r.codprecio),
     listaPrecio: cat(r.listaPrecio),
     sector: cat(r.sector),
     subSector: cat(r.subSector),
@@ -610,4 +612,87 @@ export async function insertErpClient(c: {
       END
       ELSE SELECT CAST(0 AS int) AS created;`);
   return { created: Number(res.recordset[0]?.created ?? 0) === 1 };
+}
+
+/**
+ * Actualiza el cliente en el ERP (MTPROCLI). Los campos base (nombre, tipo de
+ * persona, correo, teléfono, dirección) se escriben siempre; los opcionales
+ * (`codven`/`codprecio`/`codciudad`) solo cuando vienen definidos — `undefined`
+ * significa "no tocar" (p. ej. asesor y lista de precio son solo-admin).
+ */
+export async function updateErpClient(c: {
+  nit: string;
+  nombre: string;
+  esEmpresa: boolean;
+  nombres?: string | null;
+  apellidos?: string | null;
+  email?: string | null;
+  telefono?: string | null;
+  direccion?: string | null;
+  /** Asesor del ERP (VENDEN.CODVEN). undefined = no modificar. */
+  codven?: string;
+  /** Lista de precio del ERP (MTPRECIO.CODPRECIO). undefined = no modificar. */
+  codprecio?: string;
+  /**
+   * Ciudad del ERP (CIUDAD.CODCIUDAD → MTPROCLI.CIUDAD). Se escribe también el
+   * nombre en CIUDADPRV, que es lo que leen el listado y su filtro.
+   * undefined = no modificar.
+   */
+  ciudad?: { codciudad: string; nombre: string };
+}): Promise<void> {
+  const pool = await getErpPool();
+  const request = pool
+    .request()
+    .input("nit", sql.Char(15), fit(c.nit, 15))
+    .input("nombre", sql.VarChar(200), fit(c.nombre, 200))
+    .input("nom1", sql.Char(30), fit(c.esEmpresa ? c.nombre : c.nombres, 30))
+    .input("ape1", sql.Char(30), fit(c.esEmpresa ? "" : c.apellidos, 30))
+    .input("personanj", sql.Numeric(5, 0), c.esEmpresa ? 2 : 1)
+    .input("email", sql.VarChar(250), fit(c.email, 250))
+    .input("tel", sql.Char(30), fit(c.telefono, 30))
+    .input("dir", sql.Char(250), fit(c.direccion, 250));
+  const sets = [
+    "NOMBRE = @nombre",
+    "NOMBRE1 = @nom1",
+    "APELLIDO1 = @ape1",
+    "PERSONANJ = @personanj",
+    "EMAIL = @email",
+    "TEL1 = @tel",
+    "DIRECCION = @dir",
+  ];
+  if (c.codven !== undefined) {
+    request.input("vendedor", sql.Char(15), fit(c.codven, 15) || "0");
+    sets.push("VENDEDOR = @vendedor");
+  }
+  if (c.codprecio !== undefined) {
+    request.input("codprecio", sql.Char(5), fit(c.codprecio, 5) || "2");
+    sets.push("CODPRECIO = @codprecio");
+  }
+  if (c.ciudad !== undefined) {
+    request
+      .input("ciudad", sql.Char(15), fit(c.ciudad.codciudad, 15))
+      .input("ciudadprv", sql.VarChar(60), fit(c.ciudad.nombre, 60));
+    sets.push("CIUDAD = @ciudad", "CIUDADPRV = @ciudadprv");
+  }
+  const res = await request.query(`
+    UPDATE MTPROCLI SET ${sets.join(", ")}
+    WHERE NIT = @nit AND ESCLIENTE = 'S';
+    SELECT @@ROWCOUNT AS n`);
+  if (Number(res.recordset[0]?.n ?? 0) === 0) {
+    throw new Error("El cliente no existe en el ERP.");
+  }
+}
+
+/** Catálogo de ciudades del ERP (tabla CIUDAD), para el select del formulario. */
+export async function getErpCiudades(): Promise<{ codciudad: string; nombre: string }[]> {
+  const pool = await getErpPool();
+  const res = await pool.request().query(`
+    SELECT LTRIM(RTRIM(CODCIUDAD)) AS codciudad, LTRIM(RTRIM(NOMBRE)) AS nombre
+    FROM CIUDAD
+    WHERE LTRIM(RTRIM(NOMBRE)) <> ''
+    ORDER BY NOMBRE`);
+  return res.recordset.map((r) => ({
+    codciudad: (r.codciudad as string) ?? "",
+    nombre: (r.nombre as string) ?? "",
+  }));
 }

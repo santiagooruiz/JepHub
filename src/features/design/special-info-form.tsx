@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { updateSpecial } from "./actions";
 import { SPECIAL_ESTADOS } from "./types";
 
@@ -83,18 +84,16 @@ export function SpecialInfoForm({
           <Input value={f.tipo} disabled={ro} onChange={(e) => set("tipo", e.target.value)} />
         </Field>
         <Field label="Estado">
-          <select
+          {/* Un estado guardado fuera del catálogo se conserva: SearchableSelect
+              lo antepone como opción. */}
+          <SearchableSelect
             value={f.estado}
             disabled={ro}
-            onChange={(e) => set("estado", e.target.value)}
-            className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            {[...new Set([f.estado, ...SPECIAL_ESTADOS])].map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
+            onChange={(v) => set("estado", v)}
+            options={[...SPECIAL_ESTADOS]}
+            clearable={false}
+            aria-label="Estado"
+          />
         </Field>
         <Field label="Imagen (URL)">
           <Input value={f.imagen} disabled={ro} onChange={(e) => set("imagen", e.target.value)} />

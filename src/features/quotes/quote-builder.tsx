@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { saveQuote, getQuoteClientInfo, type QuoteClientInfo } from "./actions";
 import { QUOTE_ESTADOS, IVA_RATE, formatMoney } from "./types";
 import type { QuoteOptions } from "./queries";
@@ -218,46 +219,30 @@ export function QuoteBuilder({
         </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <Field label="Cliente">
-            <select
-              required
+            <SearchableSelect
               value={h.clientId}
-              onChange={(e) => setHeader("clientId", e.target.value)}
-              className={selectCls}
-            >
-              <option value="">Seleccione</option>
-              {options.clients.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
+              onChange={(v) => setHeader("clientId", v)}
+              options={options.clients.map((c) => ({ value: c.id, label: c.name }))}
+              aria-label="Cliente"
+            />
           </Field>
           <Field label="Oportunidad">
-            <select
+            <SearchableSelect
               value={h.opportunityId ?? ""}
-              onChange={(e) => setHeader("opportunityId", e.target.value)}
-              className={selectCls}
-            >
-              <option value="">(ninguna)</option>
-              {oppsForClient.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
+              onChange={(v) => setHeader("opportunityId", v)}
+              options={oppsForClient.map((o) => ({ value: o.id, label: o.label }))}
+              placeholder="(ninguna)"
+              aria-label="Oportunidad"
+            />
           </Field>
           <Field label="Estado">
-            <select
+            <SearchableSelect
               value={h.estado}
-              onChange={(e) => setHeader("estado", e.target.value)}
-              className={selectCls}
-            >
-              {QUOTE_ESTADOS.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
+              onChange={(v) => setHeader("estado", v)}
+              options={[...QUOTE_ESTADOS]}
+              clearable={false}
+              aria-label="Estado"
+            />
           </Field>
           <Field label="Forma de pago">
             <Input value={h.formaPago} onChange={(e) => setHeader("formaPago", e.target.value)} />
@@ -332,18 +317,16 @@ export function QuoteBuilder({
               {rows.map((r) => (
                 <tr key={r.key} className="border-b last:border-0 align-top">
                   <td className="px-2 py-2 min-w-40">
-                    <select
+                    <SearchableSelect
                       value={r.productId ?? ""}
-                      onChange={(e) => pickProduct(r.key, e.target.value)}
-                      className={selectCls}
-                    >
-                      <option value="">— libre —</option>
-                      {options.products.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.codigo}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={(v) => pickProduct(r.key, v)}
+                      options={options.products.map((p) => ({
+                        value: p.id,
+                        label: p.codigo,
+                      }))}
+                      placeholder="— libre —"
+                      aria-label="Producto"
+                    />
                   </td>
                   <td className="px-2 py-2 min-w-48">
                     <Input

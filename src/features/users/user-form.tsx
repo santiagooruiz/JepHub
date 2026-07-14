@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { saveUser } from "./actions";
 
 export type UserFormOptions = {
@@ -24,9 +25,6 @@ export type UserEditing = {
   numeroTelefonico: string | null;
   status: "ACTIVE" | "INACTIVE" | "PASSWORD_CHANGE";
 };
-
-const selectCls =
-  "h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -117,19 +115,11 @@ export function UserForm({
             />
           </Field>
           <Field label="Perfil (rol) *">
-            <select
-              required
+            <SearchableSelect
               value={f.roleId ?? ""}
-              onChange={(e) => set("roleId", e.target.value)}
-              className={selectCls}
-            >
-              <option value="">Seleccione</option>
-              {options.roles.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.name}
-                </option>
-              ))}
-            </select>
+              onChange={(v) => set("roleId", v)}
+              options={options.roles.map((r) => ({ value: r.id, label: r.name }))}
+            />
           </Field>
           <Field label="Cargo">
             <Input value={f.cargoActual} onChange={(e) => set("cargoActual", e.target.value)} />
@@ -170,15 +160,16 @@ export function UserForm({
             </div>
           </div>
           <Field label="Estado">
-            <select
+            <SearchableSelect
               value={f.status}
-              onChange={(e) => set("status", e.target.value as typeof f.status)}
-              className={selectCls}
-            >
-              <option value="ACTIVE">Activo</option>
-              <option value="INACTIVE">Inactivo</option>
-              <option value="PASSWORD_CHANGE">Cambio de contraseña</option>
-            </select>
+              onChange={(v) => set("status", v as typeof f.status)}
+              options={[
+                { value: "ACTIVE", label: "Activo" },
+                { value: "INACTIVE", label: "Inactivo" },
+                { value: "PASSWORD_CHANGE", label: "Cambio de contraseña" },
+              ]}
+              clearable={false}
+            />
           </Field>
         </div>
       </Card>

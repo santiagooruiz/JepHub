@@ -7,6 +7,7 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   updateOrderState,
   approveOrderStep,
@@ -19,26 +20,22 @@ export function OrderStateSelect({ id, estado }: { id: string; estado: string })
   const router = useRouter();
   const [pending, start] = React.useTransition();
   return (
-    <select
+    <SearchableSelect
       value={estado}
       disabled={pending}
-      onChange={(e) => {
-        const v = e.target.value;
+      onChange={(v) =>
         start(async () => {
           const res = await updateOrderState(id, v);
           if (res.ok) toast.success(`Pedido actualizado a ${v}`);
           else toast.error(res.error);
           router.refresh();
-        });
-      }}
-      className="h-8 rounded-md border border-input bg-background px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-    >
-      {ORDER_ESTADOS.map((s) => (
-        <option key={s} value={s}>
-          {s}
-        </option>
-      ))}
-    </select>
+        })
+      }
+      options={[...ORDER_ESTADOS]}
+      clearable={false}
+      className="h-8 w-auto min-w-40 px-2"
+      aria-label="Estado del pedido"
+    />
   );
 }
 
