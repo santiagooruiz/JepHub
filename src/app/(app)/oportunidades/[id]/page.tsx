@@ -277,6 +277,7 @@ export default async function OportunidadDetallePage({
             canRequestDesign={canRequestDesign}
             designQuoteId={designQuoteId}
             designRequestId={designRequestId}
+            estado={o.estado}
           />
           {canCreateQuotes && (
             <Button asChild>

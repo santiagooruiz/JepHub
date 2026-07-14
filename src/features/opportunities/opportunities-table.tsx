@@ -8,6 +8,7 @@ import { DataTable } from "@/components/data-table/data-table";
 import { Badge } from "@/components/ui/badge";
 import { DeleteButton } from "@/features/config/delete-button";
 import { deleteOpportunity } from "./actions";
+import { MarkLostButton } from "./mark-lost-button";
 import { type OppRow, oppEstadoVariant } from "./types";
 
 export function OpportunitiesTable({
@@ -92,6 +93,9 @@ export function OpportunitiesTable({
             >
               <Pencil className="size-4" />
             </Link>
+          )}
+          {canEdit && row.original.estado !== "Perdida" && (
+            <MarkLostButton id={row.original.id} nombre={row.original.nombre} />
           )}
           {canDelete && (
             <DeleteButton

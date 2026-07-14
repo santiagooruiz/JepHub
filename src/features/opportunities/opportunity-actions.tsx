@@ -9,6 +9,7 @@ import {
   DollarSign,
   Pencil,
   PencilRuler,
+  ThumbsDown,
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -16,7 +17,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { requestDesign } from "@/features/design/actions";
-import { deleteOpportunity } from "./actions";
+import { deleteOpportunity, updateOpportunityStage } from "./actions";
 
 const itemCls =
   "flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0 [&_svg]:text-muted-foreground";
@@ -35,6 +36,7 @@ export function OpportunityActionsMenu({
   canRequestDesign,
   designQuoteId,
   designRequestId,
+  estado,
 }: {
   id: string;
   numero: number;
@@ -43,6 +45,7 @@ export function OpportunityActionsMenu({
   canDelete: boolean;
   canCreateQuotes: boolean;
   canRequestDesign: boolean;
+  estado: string;
   /** Cotización más reciente sin solicitud de diseño (para "Solicitar planos"). */
   designQuoteId: string | null;
   /** Solicitud de diseño ya existente en alguna cotización ("Ver en backlog"). */
@@ -81,6 +84,21 @@ export function OpportunityActionsMenu({
         toast.error(res.error);
       }
     });
+  }
+
+  function marcarPerdida() {
+    setOpen(false);
+    confirmDialog(`¿Marcar la oportunidad N° ${numero} como perdida?`, () =>
+      start(async () => {
+        const res = await updateOpportunityStage(id, "Perdida");
+        if (res.ok) {
+          toast.success("Oportunidad marcada como perdida");
+          router.refresh();
+        } else {
+          toast.error(res.error);
+        }
+      })
+    );
   }
 
   function eliminar() {
@@ -165,6 +183,17 @@ export function OpportunityActionsMenu({
           >
             <Building2 /> Ver cliente
           </Link>
+          {canEdit && estado !== "Perdida" && (
+            <button
+              type="button"
+              className={itemCls}
+              role="menuitem"
+              disabled={pending}
+              onClick={marcarPerdida}
+            >
+              <ThumbsDown /> Marcar como perdida
+            </button>
+          )}
           {canDelete && (
             <>
               <div className="my-1 h-px bg-border" />
