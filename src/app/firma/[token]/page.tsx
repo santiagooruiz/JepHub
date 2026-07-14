@@ -38,17 +38,29 @@ export default async function FirmaPage({
 
         <Card className="mt-6 p-4">
           {sig.estado === "firmada" ? (
-            <div className="flex items-center gap-3 text-sm">
-              <CheckCircle2 className="size-6 text-[hsl(var(--success))]" />
-              <div>
-                <p className="font-medium">Cotización aprobada y firmada</p>
-                <p className="text-muted-foreground">
-                  Por {sig.firmanteNombre}
-                  {sig.firmadaEn
-                    ? ` · ${sig.firmadaEn.toLocaleString("es-CO")}`
-                    : ""}
-                </p>
+            <div className="space-y-3">
+              <div className="flex items-center gap-3 text-sm">
+                <CheckCircle2 className="size-6 text-[hsl(var(--success))]" />
+                <div>
+                  <p className="font-medium">Cotización aprobada y firmada</p>
+                  <p className="text-muted-foreground">
+                    Por {sig.firmanteNombre}
+                    {sig.firmadaEn
+                      ? ` · ${sig.firmadaEn.toLocaleString("es-CO")}`
+                      : ""}
+                  </p>
+                </div>
               </div>
+              {sig.firmaImagen && (
+                <div className="rounded-md border bg-white p-2">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={sig.firmaImagen}
+                    alt={`Firma de ${sig.firmanteNombre ?? "cliente"}`}
+                    className="mx-auto max-h-32 object-contain"
+                  />
+                </div>
+              )}
             </div>
           ) : sig.estado === "rechazada" ? (
             <div className="flex items-center gap-3 text-sm">

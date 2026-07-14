@@ -11,9 +11,15 @@ import { createSignatureLink } from "./signature-actions";
 export function SignaturePanel({
   quoteId,
   estado,
+  firmaImagen,
+  firmanteNombre,
+  firmadaEn,
 }: {
   quoteId: string;
   estado: string | null;
+  firmaImagen?: string | null;
+  firmanteNombre?: string | null;
+  firmadaEn?: string | null;
 }) {
   const [url, setUrl] = React.useState<string | null>(null);
   const [copied, setCopied] = React.useState(false);
@@ -59,6 +65,20 @@ export function SignaturePanel({
         >
           Firma: {estado}
         </Badge>
+      )}
+      {estado === "firmada" && firmaImagen && (
+        <div className="rounded-md border bg-white p-2">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={firmaImagen}
+            alt={`Firma de ${firmanteNombre ?? "cliente"}`}
+            className="mx-auto max-h-24 object-contain"
+          />
+          <p className="mt-1 text-center text-xs text-neutral-500">
+            {firmanteNombre}
+            {firmadaEn ? ` · ${firmadaEn}` : ""}
+          </p>
+        </div>
       )}
       <Button
         onClick={generate}

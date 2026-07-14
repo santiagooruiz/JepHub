@@ -488,6 +488,7 @@ model Signature {
   estado         String    @default("pendiente") // pendiente | firmada | rechazada
   firmanteNombre String?
   firmanteEmail  String?
+  firmaImagen    String?   @db.Text // PNG data-URL: dibujada o extraída de archivo (imagen/PDF)
   firmadaEn      DateTime?
   createdAt      DateTime  @default(now())
 }

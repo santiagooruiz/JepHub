@@ -45,7 +45,14 @@ export default async function CotizacionDetallePage({
       opportunity: { select: { id: true, numero: true, nombre: true } },
       registeredBy: { select: { name: true } },
       items: true,
-      signature: { select: { estado: true } },
+      signature: {
+        select: {
+          estado: true,
+          firmaImagen: true,
+          firmanteNombre: true,
+          firmadaEn: true,
+        },
+      },
       order: { select: { id: true } },
       designRequests: {
         where: { deletedAt: null },
@@ -247,6 +254,11 @@ export default async function CotizacionDetallePage({
               <SignaturePanel
                 quoteId={q.id}
                 estado={q.signature?.estado ?? null}
+                firmaImagen={q.signature?.firmaImagen ?? null}
+                firmanteNombre={q.signature?.firmanteNombre ?? null}
+                firmadaEn={
+                  q.signature?.firmadaEn?.toLocaleString("es-CO") ?? null
+                }
               />
             </div>
           </Card>

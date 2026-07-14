@@ -29,14 +29,25 @@ export async function createSignatureLink(
   return { ok: true, url: `${base}/firma/${token}` };
 }
 
+// La firma llega como data-URL PNG/JPEG generada en el navegador (canvas).
+const FIRMA_DATA_URL = /^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+$/;
+const FIRMA_MAX_CHARS = 2_000_000; // ~1.5 MB de binario
+
 /** Público (sin sesión): el cliente aprueba y firma. */
 export async function signQuote(
   token: string,
   nombre: string,
-  email: string
+  email: string,
+  firmaImagen: string
 ): Promise<ActionResult> {
   if (!token || !nombre.trim()) {
     return { ok: false, error: "Ingresa tu nombre para firmar." };
+  }
+  if (!firmaImagen) {
+    return { ok: false, error: "Dibuja o adjunta tu firma para continuar." };
+  }
+  if (firmaImagen.length > FIRMA_MAX_CHARS || !FIRMA_DATA_URL.test(firmaImagen)) {
+    return { ok: false, error: "La firma no es válida. Intenta de nuevo." };
   }
   const sig = await db.signature.findUnique({
     where: { token },
@@ -54,6 +65,7 @@ export async function signQuote(
         estado: "firmada",
         firmanteNombre: nombre.trim(),
         firmanteEmail: email.trim() || null,
+        firmaImagen,
         firmadaEn: new Date(),
       },
     }),
