@@ -63,6 +63,7 @@ export default async function CotizacionDetallePage({
   });
   if (!q) notFound();
   const canRequestDesign = user.ability.can("create", "backlog_design");
+  const canCreateOrder = user.ability.can("create", "orders");
 
   // Ítems con acabados pendientes: el asesor debe resolverlos (diseño/planos)
   const porDefinir = q.items.filter((it) =>
@@ -273,7 +274,13 @@ export default async function CotizacionDetallePage({
                   <Link href={`/pedidos/${q.order.id}`}>Ver pedido</Link>
                 </Button>
               ) : q.estado === "Aprobada" ? (
-                <GenerateOrderButton quoteId={q.id} />
+                canCreateOrder ? (
+                  <GenerateOrderButton quoteId={q.id} />
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    Tu rol no tiene permiso para generar pedidos.
+                  </p>
+                )
               ) : (
                 <p className="text-sm text-muted-foreground">
                   Aprueba la cotización para generar el pedido.

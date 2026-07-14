@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Check, Send, RefreshCw } from "lucide-react";
+import { Check, Send, RefreshCw, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -213,7 +213,8 @@ export function GenerateOrderButton({ quoteId }: { quoteId: string }) {
           })
         }
       >
-        Generar pedido
+        {pending && <Loader2 className="size-4 animate-spin" />}
+        {pending ? "Generando…" : "Generar pedido"}
       </Button>
       {error && <p className="mt-1 text-sm text-[hsl(var(--destructive))]">{error}</p>}
     </div>
