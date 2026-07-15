@@ -143,6 +143,36 @@ export async function generateOrderFromQuote(
   if (q.estado !== "Aprobada") {
     return { ok: false, error: "La cotización debe estar Aprobada." };
   }
+  if (q.items.length === 0) {
+    return { ok: false, error: "La cotización no tiene ítems." };
+  }
+  // Los acabados (Formica/Canto/Herraje) deben estar definidos: no se genera el
+  // pedido si algún ítem sigue "POR DEFINIR" (pendiente de diseño/planos).
+  const porDefinir = q.items.filter((it) =>
+    it.acabados?.toUpperCase().includes("POR DEFINIR")
+  );
+  if (porDefinir.length > 0) {
+    return {
+      ok: false,
+      error: `No se puede generar el pedido: ${porDefinir.length} ítem(es) tienen acabados POR DEFINIR. Defínelos antes de generar el pedido.`,
+    };
+  }
+  // El cliente debe tener NIT/documento (requerido por el pedido y por el ERP,
+  // que deriva vendedor/cuenta de MTPROCLI por NIT).
+  if (!q.client.numeroDocumento?.trim()) {
+    return {
+      ok: false,
+      error: "El cliente no tiene número de documento (NIT), requerido para generar el pedido.",
+    };
+  }
+  // Cada ítem debe tener referencia (código de producto, FK a MTMERCIA en el ERP).
+  const sinReferencia = q.items.filter((it) => !it.referencia?.trim());
+  if (sinReferencia.length > 0) {
+    return {
+      ok: false,
+      error: `No se puede generar el pedido: ${sinReferencia.length} ítem(es) sin referencia (código de producto).`,
+    };
+  }
 
   const last = await db.order.findFirst({
     where: { companyId: user.companyId },

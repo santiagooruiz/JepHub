@@ -69,6 +69,19 @@ export default async function CotizacionDetallePage({
   const porDefinir = q.items.filter((it) =>
     it.acabados?.toUpperCase().includes("POR DEFINIR")
   );
+  const sinReferencia = q.items.filter((it) => !it.referencia?.trim());
+  // Motivo por el que aún no se puede generar el pedido (validaciones previas).
+  // La guardia autoritativa está en generateOrderFromQuote (server action).
+  const motivoBloqueo: string | null =
+    q.items.length === 0
+      ? "La cotización no tiene ítems."
+      : porDefinir.length > 0
+        ? "Define los acabados de los ítems “POR DEFINIR” antes de generar el pedido."
+        : !q.client.numeroDocumento?.trim()
+          ? "El cliente no tiene número de documento (NIT), requerido para generar el pedido."
+          : sinReferencia.length > 0
+            ? `Hay ${sinReferencia.length} ítem(es) sin referencia (código). Complétalos antes de generar el pedido.`
+            : null;
 
   const [activities, param] = await Promise.all([
     db.activity.findMany({
@@ -274,12 +287,16 @@ export default async function CotizacionDetallePage({
                   <Link href={`/pedidos/${q.order.id}`}>Ver pedido</Link>
                 </Button>
               ) : q.estado === "Aprobada" ? (
-                canCreateOrder ? (
-                  <GenerateOrderButton quoteId={q.id} />
-                ) : (
+                !canCreateOrder ? (
                   <p className="text-sm text-muted-foreground">
                     Tu rol no tiene permiso para generar pedidos.
                   </p>
+                ) : motivoBloqueo ? (
+                  <p className="text-sm text-[hsl(var(--destructive))]">
+                    {motivoBloqueo}
+                  </p>
+                ) : (
+                  <GenerateOrderButton quoteId={q.id} />
                 )
               ) : (
                 <p className="text-sm text-muted-foreground">
