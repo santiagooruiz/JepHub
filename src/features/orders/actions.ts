@@ -5,6 +5,8 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/guard";
 import { enqueueSend } from "@/server/queue/ofimatica";
+import { sendMail } from "@/server/mail";
+import { buildOrderEmail } from "./order-email";
 import type { ActionResult } from "@/features/config/actions";
 import {
   ORDER_ESTADOS,
@@ -14,21 +16,39 @@ import {
 } from "./types";
 
 /**
- * Genera un pedido a partir de una cotización APROBADA (copia ítems) y encola
- * su envío al ERP ofimática: el worker crea allí la COTIZACIÓN 'CV' vía los
- * stored procedures (ver docs/INTEGRACION-OFIMATICA.md — nunca un PD/PX).
+ * Genera un pedido a partir de una cotización APROBADA (copia ítems) y envía
+ * un correo (ORDER_NOTIFY_EMAIL) con la información de la cotización para
+ * ingresarla en el ERP. Medida transitoria: cuando se active la inserción
+ * automática de la CV vía stored procedures (docs/INTEGRACION-OFIMATICA.md),
+ * este correo se reemplaza por el encolado del job `send`.
  */
 export async function generateOrderFromQuote(
   quoteId: string
 ): Promise<
-  | { ok: true; id: string; erp?: "ENCOLADO" | "ERROR" }
+  | { ok: true; id: string; mail?: "ENVIADO" | "ERROR" }
   | { ok: false; error: string }
 > {
   const user = await requirePermission("create", "orders");
 
   const q = await db.quote.findFirst({
     where: { id: quoteId, companyId: user.companyId, deletedAt: null },
-    include: { items: true, order: { select: { id: true } } },
+    include: {
+      items: true,
+      order: { select: { id: true } },
+      client: {
+        select: {
+          personType: true,
+          razonSocial: true,
+          nombreComercial: true,
+          nombres: true,
+          apellidos: true,
+          numeroDocumento: true,
+          telefono: true,
+          email: true,
+        },
+      },
+      registeredBy: { select: { name: true } },
+    },
   });
   if (!q) return { ok: false, error: "Cotización no encontrada." };
   if (q.order) return { ok: true, id: q.order.id };
@@ -75,31 +95,53 @@ export async function generateOrderFromQuote(
     },
   });
 
-  // Encola la creación de la cotización CV en el ERP (worker → stored
-  // procedures). Si Redis no está disponible, el pedido queda creado y el
-  // panel de ofimática del pedido ofrece "Reintentar envío".
-  let erp: "ENCOLADO" | "ERROR";
+  // Correo con los datos de la cotización para ingresarla en el ERP. Si el
+  // envío falla, el pedido igual queda creado y se avisa en el toast.
+  const clienteNombre =
+    q.client.personType === "JURIDICA"
+      ? q.client.razonSocial || q.client.nombreComercial || ""
+      : [q.client.nombres, q.client.apellidos].filter(Boolean).join(" ");
+  let mail: "ENVIADO" | "ERROR";
   try {
-    await db.erpSync.update({
-      where: { orderId: order.id },
-      data: { estadoEnvio: "ENCOLADO" },
+    const { subject, html } = buildOrderEmail({
+      pedidoNumero: order.numero,
+      pedidoId: order.id,
+      quoteNumero: q.numero,
+      clienteNombre,
+      nit: q.client.numeroDocumento,
+      telefono: q.client.telefono,
+      emailCliente: q.client.email,
+      asesor: q.registeredBy?.name ?? null,
+      formaPago: q.formaPago,
+      direccionEnvio: q.direccionEnvio,
+      ordenCompra: q.ordenCompra,
+      items: q.items.map((it) => ({
+        referencia: it.referencia,
+        descripcion: it.descripcion,
+        acabados: it.acabados,
+        cantidad: it.cantidad,
+        precio: Number(it.precio),
+        descuentoPct: Number(it.descuentoPct),
+        total: Number(it.total),
+      })),
+      subtotal: Number(q.subtotal),
+      impuesto: Number(q.impuesto),
+      total: Number(q.total),
     });
-    await enqueueSend(order.id);
-    erp = "ENCOLADO";
-  } catch {
-    await db.erpSync.updateMany({
-      where: { orderId: order.id },
-      data: {
-        estadoEnvio: "ERROR",
-        ultimoError: "No se pudo encolar el envío a ofimática. ¿Está Redis activo?",
-      },
+    await sendMail({
+      to: process.env.ORDER_NOTIFY_EMAIL || "auxsistemas@jepmobiliari.com",
+      subject,
+      html,
     });
-    erp = "ERROR";
+    mail = "ENVIADO";
+  } catch (err) {
+    console.error("[orders] fallo el correo de ingreso a ofimática:", err);
+    mail = "ERROR";
   }
 
   revalidatePath("/pedidos");
   revalidatePath(`/cotizaciones/${quoteId}`);
-  return { ok: true, id: order.id, erp };
+  return { ok: true, id: order.id, mail };
 }
 
 export async function approveOrderStep(

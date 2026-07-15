@@ -204,11 +204,11 @@ export function GenerateOrderButton({ quoteId }: { quoteId: string }) {
             setError(null);
             const res = await generateOrderFromQuote(quoteId);
             if (res.ok) {
-              if (res.erp === "ENCOLADO") {
-                toast.success("Pedido generado — cotización encolada al ERP ofimática");
-              } else if (res.erp === "ERROR") {
+              if (res.mail === "ENVIADO") {
+                toast.success("Pedido generado — correo enviado para ingreso en ofimática");
+              } else if (res.mail === "ERROR") {
                 toast.warning(
-                  "Pedido generado, pero no se pudo encolar el envío al ERP. Reintenta desde el pedido."
+                  "Pedido generado, pero no se pudo enviar el correo de ingreso a ofimática."
                 );
               } else {
                 toast.success("Pedido generado");
