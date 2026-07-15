@@ -13,6 +13,7 @@ import {
   updateOrderState,
   linkErpCotizacion,
   refreshErpStatus,
+  retryErpInsert,
   generateOrderFromQuote,
 } from "./actions";
 import {
@@ -87,6 +88,9 @@ export type ErpState = {
   nCotizacionErp: string | null;
   /** N° de pedido (PD) que el ERP generó a partir de la CV (solo lectura). */
   nroPedidoErp: string | null;
+  /** Estado del último envío al ERP: ENVIADO | ERROR | ENCOLADO | null. */
+  estadoEnvio: string | null;
+  ultimoError: string | null;
   fechaTapiceria: string | null;
   fechaListo: string | null;
   fechaDespacho: string | null;
@@ -162,6 +166,18 @@ export function OfimaticaPanel({
       router.refresh();
     });
 
+  const retry = () =>
+    start(async () => {
+      setError(null);
+      const res = await retryErpInsert(orderId);
+      if (res.ok) toast.success("Cotización creada en ofimática");
+      else {
+        setError(res.error);
+        toast.error(res.error);
+      }
+      router.refresh();
+    });
+
   return (
     <div className="space-y-3 text-sm">
       {erp.nCotizacionErp ? (
@@ -202,9 +218,30 @@ export function OfimaticaPanel({
         </div>
       ) : canManage ? (
         <div className="space-y-2">
+          {erp.estadoEnvio === "ERROR" && (
+            <div className="space-y-2 rounded-md border border-[hsl(var(--destructive))]/40 bg-destructive/5 p-2">
+              <p className="text-xs text-[hsl(var(--destructive))]">
+                Falló la inserción en ofimática: {erp.ultimoError ?? "error desconocido"}
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full"
+                disabled={pending}
+                onClick={retry}
+              >
+                {pending ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="size-4" />
+                )}
+                Reintentar inserción en ofimática
+              </Button>
+            </div>
+          )}
           <p className="text-xs text-muted-foreground">
-            Ingresa el N° de cotización (CV) que asignó ofimática para vincular
-            este pedido y hacer seguimiento del pedido (PD) y sus hitos.
+            O ingresa manualmente el N° de cotización (CV) que asignó ofimática
+            para hacer seguimiento del pedido (PD) y sus hitos.
           </p>
           <div className="flex gap-2">
             <Input
@@ -247,7 +284,13 @@ export function GenerateOrderButton({ quoteId }: { quoteId: string }) {
             setError(null);
             const res = await generateOrderFromQuote(quoteId);
             if (res.ok) {
-              if (res.mail === "ENVIADO") {
+              if (res.erp === "ENVIADO") {
+                toast.success("Pedido generado — cotización creada en ofimática");
+              } else if (res.erp === "ERROR") {
+                toast.warning(
+                  "Pedido generado, pero falló la inserción en ofimática. Revísalo en el pedido (se envió el correo de respaldo)."
+                );
+              } else if (res.mail === "ENVIADO") {
                 toast.success("Pedido generado — correo enviado para ingreso en ofimática");
               } else if (res.mail === "ERROR") {
                 toast.warning(

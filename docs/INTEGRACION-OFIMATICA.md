@@ -62,21 +62,24 @@ llamar a los SP y falla con mensaje accionable (visible en `ErpSync.ultimoError`
 
 ## Flujos
 
-### Modo operativo actual (jul-2026): ingreso manual + vínculo de CV
+### Modo operativo actual (jul-2026): inserción automática de la CV + correo
 
-Por decisión del negocio, hoy la CV **no** se inserta automáticamente vía SP. Al
-generar el pedido (`generateOrderFromQuote`) se envía un **correo** a
-`ORDER_NOTIFY_EMAIL` (auxsistemas@) con los datos para ingresar la cotización en
-el ERP a mano. Quien la ingresa obtiene el **N° de CV** (p. ej. `46157`) y lo
-**vincula** en la página del pedido (panel *Ofimática*, `linkErpCotizacion` →
-guarda el N° en `ErpSync.nPedidoOfimatica`). Con ese número, `refreshErpStatus`
-(botón "Consultar estado") y el `poll` resuelven el **PD** generado
-(`TIPODCTOPC='CV' AND NROSOLI=<CV>`), lo guardan en `ErpSync.nroPedidoErp` y leen
-los hitos. El panel *Seguimiento* (antes "Aprobaciones") es **solo informativo**:
-Ingreso Pedido = existe PD; Fabricación = Tapicería/Listo; Instalación = Despacho;
-Facturación = estado "Facturado". No hay botones de aprobación (esos procesos
-viven en el ERP). El envío automático por SP (`sendOrder`/job `send`) sigue en el
-código para reactivarlo cuando los maestros del ERP cubran clientes/referencias.
+Al generar el pedido (`generateOrderFromQuote`) JEP-Hub **inserta la CV en el ERP
+de forma síncrona** (helper `insertCotizacionErp` → `getErpClient().sendOrder()`,
+los stored procedures) y **además** envía un correo de respaldo a
+`ORDER_NOTIFY_EMAIL` (auxsistemas@). El NRODCTO de la CV queda en
+`ErpSync.nPedidoOfimatica` (estado `ENVIADO`); si la inserción falla (p. ej. el
+cliente/ref no existe en los maestros del ERP) queda `ERROR` + `ultimoError`, y
+en la página del pedido (panel *Ofimática*, permiso `orders.send_ofimatica`) hay
+botón **"Reintentar inserción"** (`retryErpInsert`) y, como alternativa, **vincular
+manualmente** el N° de CV (`linkErpCotizacion`) si se creó a mano. Es síncrono (no
+depende del worker/Redis). Con la CV, `refreshErpStatus` (botón "Consultar
+estado") y el `poll` resuelven el **PD** (`TIPODCTOPC='CV' AND NROSOLI=<CV>`), lo
+guardan en `ErpSync.nroPedidoErp` y leen los hitos. El panel *Seguimiento* (antes
+"Aprobaciones") es **solo informativo**: Ingreso Pedido = existe PD; Fabricación =
+Tapicería/Listo; Instalación = Despacho; Facturación = estado "Facturado" (sin
+botones de aprobación; esos procesos viven en el ERP). El job `send`/`sendToOfimatica`
+(vía worker) sigue disponible pero ya no se usa desde la UI.
 
 ### JEP-Hub → ERP (crear cotización CV)
 

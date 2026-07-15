@@ -9,25 +9,117 @@ import { sendMail } from "@/server/mail";
 import {
   fetchPedidoNumero,
   fetchErpMilestones,
+  getErpClient,
   isErpDbConfigured,
 } from "@/server/ofimatica/client";
 import { applyMilestone } from "@/server/ofimatica/milestones";
 import { HITOS } from "@/server/ofimatica/types";
+import { clientDisplayName } from "@/features/clients/queries";
 import { buildOrderEmail } from "./order-email";
 import type { ActionResult } from "@/features/config/actions";
 import { ORDER_ESTADOS, APPROVAL_KINDS } from "./types";
 
 /**
- * Genera un pedido a partir de una cotización APROBADA (copia ítems) y envía
- * un correo (ORDER_NOTIFY_EMAIL) con la información de la cotización para
- * ingresarla en el ERP. Medida transitoria: cuando se active la inserción
- * automática de la CV vía stored procedures (docs/INTEGRACION-OFIMATICA.md),
- * este correo se reemplaza por el encolado del job `send`.
+ * Inserta la COTIZACIÓN (CV) del pedido en el ERP (SQL Server) vía los stored
+ * procedures (docs/INTEGRACION-OFIMATICA.md). Guarda el NRODCTO de la CV en
+ * `ErpSync.nPedidoOfimatica` (ENVIADO) o el error (ERROR). No cambia el estado
+ * del pedido: eso lo hace el seguimiento cuando el ERP genera el PD. Síncrono
+ * (no depende del worker/Redis).
+ */
+async function insertCotizacionErp(
+  orderId: string
+): Promise<{ ok: true; cv: string } | { ok: false; error: string }> {
+  const order = await db.order.findUnique({
+    where: { id: orderId },
+    select: {
+      id: true,
+      numero: true,
+      ordenCompra: true,
+      direccionEnvio: true,
+      subtotal: true,
+      impuesto: true,
+      total: true,
+      quote: { select: { numero: true } },
+      client: {
+        select: {
+          personType: true,
+          razonSocial: true,
+          nombreComercial: true,
+          nombres: true,
+          apellidos: true,
+          numeroDocumento: true,
+        },
+      },
+      items: {
+        select: {
+          referencia: true,
+          descripcion: true,
+          cantidad: true,
+          precio: true,
+          total: true,
+          observacionesInternas: true,
+        },
+      },
+    },
+  });
+  if (!order) return { ok: false, error: "Pedido no encontrado." };
+
+  try {
+    // El ERP crea SOLO una cotización 'CV' (nunca 'PD'/'PX'); el vendedor lo
+    // deriva el SP del maestro MTPROCLI por NIT.
+    const result = await getErpClient().sendOrder({
+      id: order.id,
+      numero: order.numero,
+      quoteNumero: order.quote?.numero ?? null,
+      total: Number(order.total),
+      subtotal: Number(order.subtotal),
+      impuesto: Number(order.impuesto),
+      nit: order.client.numeroDocumento,
+      clientName: clientDisplayName(order.client),
+      ordenCompra: order.ordenCompra,
+      direccionEnvio: order.direccionEnvio,
+      items: order.items.map((it) => ({
+        referencia: it.referencia,
+        descripcion: it.descripcion,
+        cantidad: it.cantidad,
+        precio: Number(it.precio),
+        total: Number(it.total),
+        nota: it.observacionesInternas,
+      })),
+    });
+    await db.erpSync.update({
+      where: { orderId },
+      data: {
+        estadoEnvio: "ENVIADO",
+        nPedidoOfimatica: result.nPedidoOfimatica,
+        identificadorCotizacion: result.identificadorCotizacion,
+        fechaEnvio: new Date(),
+        fechaCreacion: new Date(result.fechaCreacion),
+        ultimoError: null,
+        intentos: { increment: 1 },
+      },
+    });
+    return { ok: true, cv: result.nPedidoOfimatica };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Error insertando la CV en ofimática.";
+    await db.erpSync.updateMany({
+      where: { orderId },
+      data: { estadoEnvio: "ERROR", ultimoError: message, intentos: { increment: 1 } },
+    });
+    return { ok: false, error: message };
+  }
+}
+
+/**
+ * Genera un pedido a partir de una cotización APROBADA (copia ítems), inserta la
+ * COTIZACIÓN (CV) en el ERP vía los stored procedures y envía un correo de
+ * respaldo (ORDER_NOTIFY_EMAIL). Si la BD del ERP no está configurada, solo se
+ * envía el correo. Ver docs/INTEGRACION-OFIMATICA.md.
  */
 export async function generateOrderFromQuote(
   quoteId: string
 ): Promise<
-  | { ok: true; id: string; mail?: "ENVIADO" | "ERROR" }
+  | { ok: true; id: string; erp?: "ENVIADO" | "ERROR"; mail?: "ENVIADO" | "ERROR" }
   | { ok: false; error: string }
 > {
   const user = await requirePermission("create", "orders");
@@ -97,8 +189,17 @@ export async function generateOrderFromQuote(
     },
   });
 
-  // Correo con los datos de la cotización para ingresarla en el ERP. Si el
-  // envío falla, el pedido igual queda creado y se avisa en el toast.
+  // Inserta la cotización (CV) en el ERP (SQL Server) vía stored procedures. El
+  // pedido ya quedó creado; si la inserción falla, se registra el error en el
+  // ErpSync (visible en el pedido con opción de reintentar) y el correo de
+  // respaldo permite el ingreso manual.
+  let erp: "ENVIADO" | "ERROR" | undefined;
+  if (isErpDbConfigured()) {
+    const res = await insertCotizacionErp(order.id);
+    erp = res.ok ? "ENVIADO" : "ERROR";
+  }
+
+  // Correo de respaldo con los datos de la cotización para ingresarla en el ERP.
   const clienteNombre =
     q.client.personType === "JURIDICA"
       ? q.client.razonSocial || q.client.nombreComercial || ""
@@ -143,7 +244,29 @@ export async function generateOrderFromQuote(
 
   revalidatePath("/pedidos");
   revalidatePath(`/cotizaciones/${quoteId}`);
-  return { ok: true, id: order.id, mail };
+  return { ok: true, id: order.id, erp, mail };
+}
+
+/**
+ * Reintenta la inserción de la cotización (CV) en el ERP para un pedido cuyo
+ * envío falló. Útil tras corregir datos maestros (cliente/referencias) en el ERP.
+ */
+export async function retryErpInsert(orderId: string): Promise<ActionResult> {
+  const user = await requirePermission("send_ofimatica", "orders");
+  const order = await db.order.findFirst({
+    where: { id: orderId, companyId: user.companyId },
+    select: { id: true, erpSync: { select: { estadoEnvio: true } } },
+  });
+  if (!order) return { ok: false, error: "Pedido no encontrado." };
+  if (!isErpDbConfigured()) {
+    return { ok: false, error: "La BD del ERP (ofimática) no está configurada." };
+  }
+  if (order.erpSync?.estadoEnvio === "ENVIADO") {
+    return { ok: false, error: "La cotización ya fue insertada en ofimática." };
+  }
+  const res = await insertCotizacionErp(orderId);
+  revalidatePath(`/pedidos/${orderId}`);
+  return res.ok ? { ok: true } : { ok: false, error: res.error };
 }
 
 /**
