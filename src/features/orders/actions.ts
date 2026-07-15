@@ -6,14 +6,16 @@ import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/guard";
 import { enqueueSend } from "@/server/queue/ofimatica";
 import { sendMail } from "@/server/mail";
+import {
+  fetchPedidoNumero,
+  fetchErpMilestones,
+  isErpDbConfigured,
+} from "@/server/ofimatica/client";
+import { applyMilestone } from "@/server/ofimatica/milestones";
+import { HITOS } from "@/server/ofimatica/types";
 import { buildOrderEmail } from "./order-email";
 import type { ActionResult } from "@/features/config/actions";
-import {
-  ORDER_ESTADOS,
-  APPROVAL_KINDS,
-  APPROVAL_PERM,
-  type ApprovalKind,
-} from "./types";
+import { ORDER_ESTADOS, APPROVAL_KINDS } from "./types";
 
 /**
  * Genera un pedido a partir de una cotización APROBADA (copia ítems) y envía
@@ -144,35 +146,109 @@ export async function generateOrderFromQuote(
   return { ok: true, id: order.id, mail };
 }
 
-export async function approveOrderStep(
+/**
+ * Vincula el pedido del CRM con su COTIZACIÓN (CV) en el ERP: guarda el NRODCTO
+ * de la CV (el número que el ERP asigna al ingresar la cotización, p. ej. 46157).
+ * Con ese número el polling/consulta resuelve el PEDIDO (PD) y sus hitos. Deja el
+ * ErpSync en "ENVIADO" para que el polling lo tome. Ver docs/INTEGRACION-OFIMATICA.md.
+ */
+export async function linkErpCotizacion(
   orderId: string,
-  kind: string,
-  observacion?: string
+  cvNumero: string
 ): Promise<ActionResult> {
-  if (!APPROVAL_KINDS.includes(kind as ApprovalKind)) {
-    return { ok: false, error: "Tipo de aprobación inválido." };
+  const user = await requirePermission("send_ofimatica", "orders");
+  const cv = cvNumero.trim();
+  if (!/^\d+$/.test(cv)) {
+    return { ok: false, error: "El N° de cotización (CV) debe ser numérico." };
   }
-  const user = await requirePermission(
-    APPROVAL_PERM[kind as ApprovalKind],
-    "orders"
-  );
   const order = await db.order.findFirst({
     where: { id: orderId, companyId: user.companyId },
     select: { id: true },
   });
   if (!order) return { ok: false, error: "Pedido no encontrado." };
 
-  await db.orderApproval.updateMany({
-    where: { orderId, kind: kind as ApprovalKind },
-    data: {
-      aprobado: true,
-      approvedById: user.id,
-      observacion: observacion?.trim() || null,
-      fecha: new Date(),
+  await db.erpSync.upsert({
+    where: { orderId },
+    create: {
+      orderId,
+      nPedidoOfimatica: cv,
+      estadoEnvio: "ENVIADO",
+      fechaEnvio: new Date(),
+    },
+    update: {
+      nPedidoOfimatica: cv,
+      estadoEnvio: "ENVIADO",
+      fechaEnvio: new Date(),
+      ultimoError: null,
     },
   });
   revalidatePath(`/pedidos/${orderId}`);
   return { ok: true };
+}
+
+/**
+ * Consulta el ERP para el pedido: resuelve el PEDIDO (PD) generado a partir de la
+ * CV vinculada (TRADE.TIPODCTOPC='CV' AND NROSOLI=<CV>), guarda su NRODCTO y
+ * aplica los hitos de producción (TRADEMAS). Actualiza el estado del pedido de
+ * forma informativa (los procesos se gestionan en el ERP, no en JEP-Hub).
+ */
+export async function refreshErpStatus(
+  orderId: string
+): Promise<{ ok: true; pd: string | null } | { ok: false; error: string }> {
+  const user = await requirePermission("send_ofimatica", "orders");
+  const order = await db.order.findFirst({
+    where: { id: orderId, companyId: user.companyId },
+    select: {
+      id: true,
+      estado: true,
+      erpSync: { select: { nPedidoOfimatica: true } },
+    },
+  });
+  if (!order) return { ok: false, error: "Pedido no encontrado." };
+  const cv = order.erpSync?.nPedidoOfimatica?.trim();
+  if (!cv || !/^\d+$/.test(cv)) {
+    return {
+      ok: false,
+      error: "El pedido no tiene N° de cotización (CV) de ofimática. Vincúlalo primero.",
+    };
+  }
+  if (!isErpDbConfigured()) {
+    return { ok: false, error: "La BD del ERP (ofimática) no está configurada." };
+  }
+
+  try {
+    const pd = await fetchPedidoNumero(cv);
+    if (!pd) {
+      // La CV aún no fue convertida en pedido por el ERP.
+      revalidatePath(`/pedidos/${orderId}`);
+      return { ok: true, pd: null };
+    }
+    await db.erpSync.update({ where: { orderId }, data: { nroPedidoErp: pd } });
+
+    // Avanza el estado a "En Producción" cuando el ERP ya generó el pedido.
+    await db.order.updateMany({
+      where: { id: orderId, estado: "Pendiente Ingreso" },
+      data: { estado: "En Producción" },
+    });
+
+    // Hitos de producción (Tapicería/Listo/Despacho): applyMilestone registra la
+    // fecha, avanza el estado en "despacho" y notifica.
+    const milestones = await fetchErpMilestones(pd);
+    if (milestones) {
+      for (const hito of HITOS) {
+        const fecha = milestones[hito];
+        if (fecha) await applyMilestone(orderId, hito, fecha.toISOString());
+      }
+    }
+    revalidatePath(`/pedidos/${orderId}`);
+    revalidatePath("/pedidos");
+    return { ok: true, pd };
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : "Error consultando ofimática.",
+    };
+  }
 }
 
 /**

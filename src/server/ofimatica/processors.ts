@@ -166,6 +166,7 @@ export async function processPoll(): Promise<void> {
     select: {
       orderId: true,
       nPedidoOfimatica: true,
+      nroPedidoErp: true,
       fechaTapiceria: true,
       fechaListo: true,
       fechaDespacho: true,
@@ -182,6 +183,15 @@ export async function processPoll(): Promise<void> {
     // La CV aún puede no estar convertida en pedido: sin PD no hay hitos.
     const pedidoNro = pdPorCv.get(sync.nPedidoOfimatica!.trim());
     if (!pedidoNro) continue;
+
+    // Guarda el N° de pedido (PD) y avanza el estado al haberse generado.
+    if (sync.nroPedidoErp !== pedidoNro) {
+      await db.erpSync.update({ where: { orderId: sync.orderId }, data: { nroPedidoErp: pedidoNro } });
+      await db.order.updateMany({
+        where: { id: sync.orderId, estado: "Pendiente Ingreso" },
+        data: { estado: "En Producción" },
+      });
+    }
 
     const milestones = await fetchErpMilestones(pedidoNro);
     if (!milestones) continue;

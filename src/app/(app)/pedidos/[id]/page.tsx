@@ -9,7 +9,7 @@ import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { clientDisplayName } from "@/features/clients/queries";
 import { formatMoney } from "@/features/quotes/types";
-import { orderEstadoVariant } from "@/features/orders/types";
+import { orderEstadoVariant, deriveErpApprovals } from "@/features/orders/types";
 import {
   OrderStateSelect,
   ApprovalsPanel,
@@ -40,6 +40,7 @@ export default async function PedidoDetallePage({
 }) {
   const user = await requirePermission("view", "orders");
   const canEdit = user.ability.can("edit", "orders");
+  const canManageErp = user.ability.can("send_ofimatica", "orders");
   const canRequestDesign = user.ability.can("create", "backlog_design");
   const { id } = await params;
 
@@ -51,7 +52,6 @@ export default async function PedidoDetallePage({
       advisor: { select: { name: true } },
       quote: { select: { numero: true } },
       items: true,
-      approvals: { include: { approvedBy: { select: { name: true } } } },
       erpSync: true,
       designRequests: { where: { deletedAt: null }, select: { id: true }, take: 1 },
     },
@@ -168,17 +168,19 @@ export default async function PedidoDetallePage({
         <div className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Aprobaciones</CardTitle>
+              <CardTitle className="text-base">Seguimiento</CardTitle>
             </CardHeader>
             <div className="px-4 pb-4">
               <ApprovalsPanel
-                orderId={o.id}
-                approvals={o.approvals.map((a) => ({
-                  kind: a.kind,
-                  aprobado: a.aprobado,
-                  approvedBy: a.approvedBy?.name ?? null,
-                  fecha: fmtDate(a.fecha),
-                }))}
+                items={deriveErpApprovals(
+                  {
+                    nroPedidoErp: o.erpSync?.nroPedidoErp ?? null,
+                    fechaTapiceria: o.erpSync?.fechaTapiceria ?? null,
+                    fechaListo: o.erpSync?.fechaListo ?? null,
+                    fechaDespacho: o.erpSync?.fechaDespacho ?? null,
+                  },
+                  o.estado
+                )}
               />
             </div>
           </Card>
@@ -190,11 +192,10 @@ export default async function PedidoDetallePage({
             <div className="px-4 pb-4">
               <OfimaticaPanel
                 orderId={o.id}
+                canManage={canManageErp}
                 erp={{
-                  estadoEnvio: o.erpSync?.estadoEnvio ?? null,
-                  nPedidoOfimatica: o.erpSync?.nPedidoOfimatica ?? null,
-                  ultimoError: o.erpSync?.ultimoError ?? null,
-                  fechaEnvio: fmtDate(o.erpSync?.fechaEnvio ?? null),
+                  nCotizacionErp: o.erpSync?.nPedidoOfimatica ?? null,
+                  nroPedidoErp: o.erpSync?.nroPedidoErp ?? null,
                   fechaTapiceria: fmtDate(o.erpSync?.fechaTapiceria ?? null),
                   fechaListo: fmtDate(o.erpSync?.fechaListo ?? null),
                   fechaDespacho: fmtDate(o.erpSync?.fechaDespacho ?? null),

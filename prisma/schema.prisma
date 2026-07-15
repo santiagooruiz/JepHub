@@ -450,6 +450,9 @@ model ErpSync {
   orderId                String    @unique
   order                  Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
   nPedidoOfimatica       String?
+  // NRODCTO del PEDIDO (PD) que el ERP generó desde nuestra CV (solo lectura;
+  // se detecta con TRADE.TIPODCTOPC='CV' AND NROSOLI=<CV>).
+  nroPedidoErp           String?
   identificadorCotizacion String?
   // PENDIENTE · ENCOLADO · ENVIADO · ERROR
   estadoEnvio            String?

@@ -62,6 +62,22 @@ llamar a los SP y falla con mensaje accionable (visible en `ErpSync.ultimoError`
 
 ## Flujos
 
+### Modo operativo actual (jul-2026): ingreso manual + vínculo de CV
+
+Por decisión del negocio, hoy la CV **no** se inserta automáticamente vía SP. Al
+generar el pedido (`generateOrderFromQuote`) se envía un **correo** a
+`ORDER_NOTIFY_EMAIL` (auxsistemas@) con los datos para ingresar la cotización en
+el ERP a mano. Quien la ingresa obtiene el **N° de CV** (p. ej. `46157`) y lo
+**vincula** en la página del pedido (panel *Ofimática*, `linkErpCotizacion` →
+guarda el N° en `ErpSync.nPedidoOfimatica`). Con ese número, `refreshErpStatus`
+(botón "Consultar estado") y el `poll` resuelven el **PD** generado
+(`TIPODCTOPC='CV' AND NROSOLI=<CV>`), lo guardan en `ErpSync.nroPedidoErp` y leen
+los hitos. El panel *Seguimiento* (antes "Aprobaciones") es **solo informativo**:
+Ingreso Pedido = existe PD; Fabricación = Tapicería/Listo; Instalación = Despacho;
+Facturación = estado "Facturado". No hay botones de aprobación (esos procesos
+viven en el ERP). El envío automático por SP (`sendOrder`/job `send`) sigue en el
+código para reactivarlo cuando los maestros del ERP cubran clientes/referencias.
+
 ### JEP-Hub → ERP (crear cotización CV)
 
 `processSend` (worker, job `send`) → `OfimaticaDbClient.sendOrder()`:

@@ -124,6 +124,9 @@ const GRANTS: Record<string, string[] | "*"> = {
     "clients.deletecontact",
     "opportunities.create", "opportunities.edit",
     "quotes.create", "quotes.edit", "quotes.send", "quotes.sign",
+    // Genera el pedido desde su cotización aprobada (dispara el correo de
+    // ingreso a ofimática); el ciclo del pedido sigue siendo de Analista.
+    "orders.create",
     "reports.calendar",
   ],
   Diseñador: DESIGN_GRANTS,
