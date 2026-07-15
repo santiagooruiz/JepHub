@@ -204,7 +204,15 @@ export function GenerateOrderButton({ quoteId }: { quoteId: string }) {
             setError(null);
             const res = await generateOrderFromQuote(quoteId);
             if (res.ok) {
-              toast.success("Pedido generado");
+              if (res.erp === "ENCOLADO") {
+                toast.success("Pedido generado — cotización encolada al ERP ofimática");
+              } else if (res.erp === "ERROR") {
+                toast.warning(
+                  "Pedido generado, pero no se pudo encolar el envío al ERP. Reintenta desde el pedido."
+                );
+              } else {
+                toast.success("Pedido generado");
+              }
               router.push(`/pedidos/${res.id}`);
             } else {
               setError(res.error);

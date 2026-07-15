@@ -13,10 +13,17 @@ import {
   type ApprovalKind,
 } from "./types";
 
-/** Genera un pedido a partir de una cotización APROBADA (copia ítems). */
+/**
+ * Genera un pedido a partir de una cotización APROBADA (copia ítems) y encola
+ * su envío al ERP ofimática: el worker crea allí la COTIZACIÓN 'CV' vía los
+ * stored procedures (ver docs/INTEGRACION-OFIMATICA.md — nunca un PD/PX).
+ */
 export async function generateOrderFromQuote(
   quoteId: string
-): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+): Promise<
+  | { ok: true; id: string; erp?: "ENCOLADO" | "ERROR" }
+  | { ok: false; error: string }
+> {
   const user = await requirePermission("create", "orders");
 
   const q = await db.quote.findFirst({
@@ -68,9 +75,31 @@ export async function generateOrderFromQuote(
     },
   });
 
+  // Encola la creación de la cotización CV en el ERP (worker → stored
+  // procedures). Si Redis no está disponible, el pedido queda creado y el
+  // panel de ofimática del pedido ofrece "Reintentar envío".
+  let erp: "ENCOLADO" | "ERROR";
+  try {
+    await db.erpSync.update({
+      where: { orderId: order.id },
+      data: { estadoEnvio: "ENCOLADO" },
+    });
+    await enqueueSend(order.id);
+    erp = "ENCOLADO";
+  } catch {
+    await db.erpSync.updateMany({
+      where: { orderId: order.id },
+      data: {
+        estadoEnvio: "ERROR",
+        ultimoError: "No se pudo encolar el envío a ofimática. ¿Está Redis activo?",
+      },
+    });
+    erp = "ERROR";
+  }
+
   revalidatePath("/pedidos");
   revalidatePath(`/cotizaciones/${quoteId}`);
-  return { ok: true, id: order.id };
+  return { ok: true, id: order.id, erp };
 }
 
 export async function approveOrderStep(
