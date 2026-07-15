@@ -18,6 +18,7 @@ import {
 import { RegisterActivity } from "@/features/activity/register-activity";
 import { Timeline } from "@/features/activity/timeline";
 import { RequestFichaTecnicaButton } from "@/features/design/request-design-button";
+import { resolveErpStatus } from "@/server/ofimatica/status";
 
 export const dynamic = "force-dynamic";
 
@@ -58,6 +59,26 @@ export default async function PedidoDetallePage({
   });
   if (!o) notFound();
 
+  // Sincroniza con el ERP al abrir: si la cotización (CV) está enviada y aún
+  // falta resolver el pedido (PD) o registrar el despacho, consulta el ERP y
+  // actualiza (best-effort; no bloquea la página si el ERP falla). Así el estado
+  // se refleja sin depender del worker.
+  let erp = o.erpSync;
+  if (
+    erp?.estadoEnvio === "ENVIADO" &&
+    erp.nPedidoOfimatica &&
+    (!erp.nroPedidoErp || !erp.fechaDespacho)
+  ) {
+    try {
+      await resolveErpStatus(o.id);
+      erp = await db.erpSync.findUnique({ where: { orderId: o.id } });
+    } catch {
+      // Ignora errores del ERP para no romper la vista del pedido.
+    }
+  }
+  const estadoActual =
+    erp?.nroPedidoErp && o.estado === "Pendiente Ingreso" ? "En Producción" : o.estado;
+
   const [activities, param] = await Promise.all([
     db.activity.findMany({
       where: { orderId: o.id, companyId: user.companyId },
@@ -88,10 +109,10 @@ export default async function PedidoDetallePage({
           <h1 className="text-2xl font-semibold tracking-tight">
             Pedido N° {o.numero}
           </h1>
-          <Badge variant={orderEstadoVariant(o.estado)}>{o.estado}</Badge>
+          <Badge variant={orderEstadoVariant(estadoActual)}>{estadoActual}</Badge>
           <Badge variant="secondary">{o.tipoProducto}</Badge>
         </div>
-        {canEdit && <OrderStateSelect id={o.id} estado={o.estado} />}
+        {canEdit && <OrderStateSelect id={o.id} estado={estadoActual} />}
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_340px]">
@@ -174,12 +195,12 @@ export default async function PedidoDetallePage({
               <ApprovalsPanel
                 items={deriveErpApprovals(
                   {
-                    nroPedidoErp: o.erpSync?.nroPedidoErp ?? null,
-                    fechaTapiceria: o.erpSync?.fechaTapiceria ?? null,
-                    fechaListo: o.erpSync?.fechaListo ?? null,
-                    fechaDespacho: o.erpSync?.fechaDespacho ?? null,
+                    nroPedidoErp: erp?.nroPedidoErp ?? null,
+                    fechaTapiceria: erp?.fechaTapiceria ?? null,
+                    fechaListo: erp?.fechaListo ?? null,
+                    fechaDespacho: erp?.fechaDespacho ?? null,
                   },
-                  o.estado
+                  estadoActual
                 )}
               />
             </div>
@@ -194,13 +215,13 @@ export default async function PedidoDetallePage({
                 orderId={o.id}
                 canManage={canManageErp}
                 erp={{
-                  nCotizacionErp: o.erpSync?.nPedidoOfimatica ?? null,
-                  nroPedidoErp: o.erpSync?.nroPedidoErp ?? null,
-                  estadoEnvio: o.erpSync?.estadoEnvio ?? null,
-                  ultimoError: o.erpSync?.ultimoError ?? null,
-                  fechaTapiceria: fmtDate(o.erpSync?.fechaTapiceria ?? null),
-                  fechaListo: fmtDate(o.erpSync?.fechaListo ?? null),
-                  fechaDespacho: fmtDate(o.erpSync?.fechaDespacho ?? null),
+                  nCotizacionErp: erp?.nPedidoOfimatica ?? null,
+                  nroPedidoErp: erp?.nroPedidoErp ?? null,
+                  estadoEnvio: erp?.estadoEnvio ?? null,
+                  ultimoError: erp?.ultimoError ?? null,
+                  fechaTapiceria: fmtDate(erp?.fechaTapiceria ?? null),
+                  fechaListo: fmtDate(erp?.fechaListo ?? null),
+                  fechaDespacho: fmtDate(erp?.fechaDespacho ?? null),
                 }}
               />
             </div>

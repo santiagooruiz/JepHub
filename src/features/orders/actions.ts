@@ -6,14 +6,8 @@ import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/guard";
 import { enqueueSend } from "@/server/queue/ofimatica";
 import { sendMail } from "@/server/mail";
-import {
-  fetchPedidoNumero,
-  fetchErpMilestones,
-  getErpClient,
-  isErpDbConfigured,
-} from "@/server/ofimatica/client";
-import { applyMilestone } from "@/server/ofimatica/milestones";
-import { HITOS } from "@/server/ofimatica/types";
+import { getErpClient, isErpDbConfigured } from "@/server/ofimatica/client";
+import { resolveErpStatus } from "@/server/ofimatica/status";
 import { clientDisplayName } from "@/features/clients/queries";
 import { buildOrderEmail } from "./order-email";
 import type { ActionResult } from "@/features/config/actions";
@@ -321,11 +315,7 @@ export async function refreshErpStatus(
   const user = await requirePermission("send_ofimatica", "orders");
   const order = await db.order.findFirst({
     where: { id: orderId, companyId: user.companyId },
-    select: {
-      id: true,
-      estado: true,
-      erpSync: { select: { nPedidoOfimatica: true } },
-    },
+    select: { id: true, erpSync: { select: { nPedidoOfimatica: true } } },
   });
   if (!order) return { ok: false, error: "Pedido no encontrado." };
   const cv = order.erpSync?.nPedidoOfimatica?.trim();
@@ -340,29 +330,7 @@ export async function refreshErpStatus(
   }
 
   try {
-    const pd = await fetchPedidoNumero(cv);
-    if (!pd) {
-      // La CV aún no fue convertida en pedido por el ERP.
-      revalidatePath(`/pedidos/${orderId}`);
-      return { ok: true, pd: null };
-    }
-    await db.erpSync.update({ where: { orderId }, data: { nroPedidoErp: pd } });
-
-    // Avanza el estado a "En Producción" cuando el ERP ya generó el pedido.
-    await db.order.updateMany({
-      where: { id: orderId, estado: "Pendiente Ingreso" },
-      data: { estado: "En Producción" },
-    });
-
-    // Hitos de producción (Tapicería/Listo/Despacho): applyMilestone registra la
-    // fecha, avanza el estado en "despacho" y notifica.
-    const milestones = await fetchErpMilestones(pd);
-    if (milestones) {
-      for (const hito of HITOS) {
-        const fecha = milestones[hito];
-        if (fecha) await applyMilestone(orderId, hito, fecha.toISOString());
-      }
-    }
+    const { pd } = await resolveErpStatus(orderId);
     revalidatePath(`/pedidos/${orderId}`);
     revalidatePath("/pedidos");
     return { ok: true, pd };

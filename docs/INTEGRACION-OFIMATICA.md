@@ -73,9 +73,14 @@ cliente/ref no existe en los maestros del ERP) queda `ERROR` + `ultimoError`, y
 en la página del pedido (panel *Ofimática*, permiso `orders.send_ofimatica`) hay
 botón **"Reintentar inserción"** (`retryErpInsert`) y, como alternativa, **vincular
 manualmente** el N° de CV (`linkErpCotizacion`) si se creó a mano. Es síncrono (no
-depende del worker/Redis). Con la CV, `refreshErpStatus` (botón "Consultar
-estado") y el `poll` resuelven el **PD** (`TIPODCTOPC='CV' AND NROSOLI=<CV>`), lo
-guardan en `ErpSync.nroPedidoErp` y leen los hitos. El panel *Seguimiento* (antes
+depende del worker/Redis). Con la CV, la resolución del **PD**
+(`TIPODCTOPC='CV' AND NROSOLI=<CV>` → `resolveErpStatus` en
+`server/ofimatica/status.ts`) ocurre en **tres** puntos, todos idempotentes:
+**al abrir la página del pedido** (best-effort, si está ENVIADO y falta el PD o
+el despacho — así no depende del worker), con el botón "Consultar estado"
+(`refreshErpStatus`) y en el `poll`. Guarda el NRODCTO del PD en
+`ErpSync.nroPedidoErp`, avanza el estado ("Pendiente Ingreso" → "En Producción")
+y aplica los hitos nuevos sin re-notificar. El panel *Seguimiento* (antes
 "Aprobaciones") es **solo informativo**: Ingreso Pedido = existe PD; Fabricación =
 Tapicería/Listo; Instalación = Despacho; Facturación = estado "Facturado" (sin
 botones de aprobación; esos procesos viven en el ERP). El job `send`/`sendToOfimatica`
