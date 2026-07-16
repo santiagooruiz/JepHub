@@ -65,7 +65,12 @@ export async function requestDesign(
   const quote = await db.quote.findFirst({
     where: { id: quoteId, companyId: user.companyId, deletedAt: null },
     include: {
-      items: { take: 1, orderBy: { id: "asc" } },
+      // Primer producto real (las carátulas son títulos, no precargan diseño).
+      items: {
+        take: 1,
+        where: { tipo: "PRODUCTO" },
+        orderBy: [{ posicion: "asc" }, { id: "asc" }],
+      },
       designRequests: { where: { deletedAt: null }, select: { id: true }, take: 1 },
     },
   });
@@ -118,7 +123,12 @@ export async function requestFichaTecnica(
   const order = await db.order.findFirst({
     where: { id: orderId, companyId: user.companyId, deletedAt: null },
     include: {
-      items: { take: 1, orderBy: { id: "asc" } },
+      // Primer producto real (las carátulas son títulos, no precargan diseño).
+      items: {
+        take: 1,
+        where: { tipo: "PRODUCTO" },
+        orderBy: [{ posicion: "asc" }, { id: "asc" }],
+      },
       designRequests: { where: { deletedAt: null }, select: { id: true }, take: 1 },
     },
   });

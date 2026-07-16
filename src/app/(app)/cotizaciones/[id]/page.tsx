@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronLeft, Pencil, FileText } from "lucide-react";
@@ -9,6 +10,7 @@ import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { clientDisplayName } from "@/features/clients/queries";
+import { groupLineItems, sumTotals } from "@/features/quotes/line-items";
 import { quoteEstadoVariant, formatMoney } from "@/features/quotes/types";
 import { QuoteStateSelect } from "@/features/quotes/state-select";
 import { SignaturePanel } from "@/features/quotes/signature-panel";
@@ -44,7 +46,7 @@ export default async function CotizacionDetallePage({
       client: true,
       opportunity: { select: { id: true, numero: true, nombre: true } },
       registeredBy: { select: { name: true } },
-      items: true,
+      items: { orderBy: [{ posicion: "asc" }, { id: "asc" }] },
       signature: {
         select: {
           estado: true,
@@ -65,15 +67,18 @@ export default async function CotizacionDetallePage({
   const canRequestDesign = user.ability.can("create", "backlog_design");
   const canCreateOrder = user.ability.can("create", "orders");
 
+  // Las validaciones aplican solo a productos: las carátulas son títulos
+  // agrupadores sin referencia ni acabados propios.
+  const productos = q.items.filter((it) => it.tipo === "PRODUCTO");
   // Ítems con acabados pendientes: el asesor debe resolverlos (diseño/planos)
-  const porDefinir = q.items.filter((it) =>
+  const porDefinir = productos.filter((it) =>
     it.acabados?.toUpperCase().includes("POR DEFINIR")
   );
-  const sinReferencia = q.items.filter((it) => !it.referencia?.trim());
+  const sinReferencia = productos.filter((it) => !it.referencia?.trim());
   // Motivo por el que aún no se puede generar el pedido (validaciones previas).
   // La guardia autoritativa está en generateOrderFromQuote (server action).
   const motivoBloqueo: string | null =
-    q.items.length === 0
+    productos.length === 0
       ? "La cotización no tiene ítems."
       : porDefinir.length > 0
         ? "Define los acabados de los ítems “POR DEFINIR” antes de generar el pedido."
@@ -190,27 +195,64 @@ export default async function CotizacionDetallePage({
                 </tr>
               </thead>
               <tbody>
-                {q.items.map((it) => (
-                  <tr key={it.id} className="border-b last:border-0 align-top">
-                    <td className="px-3 py-2 font-medium">{it.referencia || "—"}</td>
-                    <td className="px-3 py-2">
-                      {it.descripcion || "—"}
-                      {it.acabados && (
-                        <div className="text-xs text-muted-foreground">{it.acabados}</div>
-                      )}
-                    </td>
-                    <td className="px-3 py-2 text-right tabular whitespace-nowrap">
-                      {formatMoney(Number(it.precio))}
-                    </td>
-                    <td className="px-3 py-2 text-right tabular">{it.cantidad}</td>
-                    <td className="px-3 py-2 text-right tabular">
-                      {Number(it.descuentoPct)}%
-                    </td>
-                    <td className="px-3 py-2 text-right tabular font-medium whitespace-nowrap">
-                      {formatMoney(Number(it.total))}
-                    </td>
-                  </tr>
-                ))}
+                {groupLineItems(q.items).map(({ item: it, hijos }) =>
+                  it.tipo === "CARATULA" ? (
+                    <Fragment key={it.id}>
+                      <tr className="border-b bg-muted/30 align-top">
+                        <td className="px-3 py-2 font-semibold" colSpan={5}>
+                          {it.descripcion || "—"}
+                          <span className="ml-2 text-xs font-normal text-muted-foreground">
+                            Carátula · {hijos.length} producto{hijos.length === 1 ? "" : "s"}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 text-right tabular font-semibold whitespace-nowrap">
+                          {formatMoney(sumTotals(hijos))}
+                        </td>
+                      </tr>
+                      {hijos.map((h) => (
+                        <tr key={h.id} className="border-b last:border-0 align-top">
+                          <td className="px-3 py-2 pl-6 font-medium">{h.referencia || "—"}</td>
+                          <td className="px-3 py-2">
+                            {h.descripcion || "—"}
+                            {h.acabados && (
+                              <div className="text-xs text-muted-foreground">{h.acabados}</div>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-right tabular whitespace-nowrap">
+                            {formatMoney(Number(h.precio))}
+                          </td>
+                          <td className="px-3 py-2 text-right tabular">{h.cantidad}</td>
+                          <td className="px-3 py-2 text-right tabular">
+                            {Number(h.descuentoPct)}%
+                          </td>
+                          <td className="px-3 py-2 text-right tabular font-medium whitespace-nowrap">
+                            {formatMoney(Number(h.total))}
+                          </td>
+                        </tr>
+                      ))}
+                    </Fragment>
+                  ) : (
+                    <tr key={it.id} className="border-b last:border-0 align-top">
+                      <td className="px-3 py-2 font-medium">{it.referencia || "—"}</td>
+                      <td className="px-3 py-2">
+                        {it.descripcion || "—"}
+                        {it.acabados && (
+                          <div className="text-xs text-muted-foreground">{it.acabados}</div>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular whitespace-nowrap">
+                        {formatMoney(Number(it.precio))}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular">{it.cantidad}</td>
+                      <td className="px-3 py-2 text-right tabular">
+                        {Number(it.descuentoPct)}%
+                      </td>
+                      <td className="px-3 py-2 text-right tabular font-medium whitespace-nowrap">
+                        {formatMoney(Number(it.total))}
+                      </td>
+                    </tr>
+                  )
+                )}
               </tbody>
             </table>
           </div>

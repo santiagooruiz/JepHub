@@ -22,7 +22,7 @@ export default async function EditarCotizacionPage({
   // Alcance: un Asesor no puede editar cotizaciones ajenas (404).
   const q = await db.quote.findFirst({
     where: { id, companyId: user.companyId, deletedAt: null, ...quoteScope(user) },
-    include: { items: true },
+    include: { items: { orderBy: [{ posicion: "asc" }, { id: "asc" }] } },
   });
   if (!q) notFound();
 
@@ -44,6 +44,9 @@ export default async function EditarCotizacionPage({
       ? q.fechaVencimiento.toISOString().slice(0, 10)
       : null,
     items: q.items.map((it) => ({
+      id: it.id,
+      tipo: it.tipo,
+      parentId: it.parentId,
       productId: it.productId,
       referencia: it.referencia,
       descripcion: it.descripcion,

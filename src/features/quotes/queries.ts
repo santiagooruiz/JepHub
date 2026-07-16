@@ -1,19 +1,44 @@
-import { Prisma } from "@prisma/client";
+import { Prisma, type LineItem } from "@prisma/client";
 
 import { db } from "@/lib/db";
 import { clientDisplayName } from "@/features/clients/queries";
-import type { QuoteDocData } from "./quote-document";
+import { groupLineItems, sumTotals } from "./line-items";
+import type { QuoteDocData, QuoteDocItem } from "./quote-document";
 
 export const quoteDocInclude = Prisma.validator<Prisma.QuoteInclude>()({
   client: true,
   registeredBy: { select: { name: true } },
   opportunity: { select: { nombre: true } },
-  items: true,
+  items: { orderBy: [{ posicion: "asc" as const }, { id: "asc" as const }] },
 });
 
 type QuoteWithRels = Prisma.QuoteGetPayload<{ include: typeof quoteDocInclude }>;
 
-export function mapQuoteToDoc(q: QuoteWithRels): QuoteDocData {
+function mapDocItem(it: LineItem): QuoteDocItem {
+  return {
+    tipo: "PRODUCTO",
+    referencia: it.referencia ?? "",
+    descripcion: it.descripcion ?? "",
+    acabados: it.acabados ?? "",
+    precio: Number(it.precio),
+    cantidad: it.cantidad,
+    descuentoPct: Number(it.descuentoPct),
+    total: Number(it.total),
+  };
+}
+
+export function mapQuoteToDoc(
+  q: QuoteWithRels,
+  opts?: {
+    /**
+     * Adjunta los productos internos de cada carátula (impresión interna
+     * "con desglose"). Por defecto NO viajan en los datos del documento:
+     * las páginas de cara al cliente (firma, print) no deben exponer el
+     * desglose ni siquiera en el payload RSC embebido en el HTML.
+     */
+    detalleCaratulas?: boolean;
+  }
+): QuoteDocData {
   return {
     numero: q.numero,
     fecha: q.createdAt.toLocaleDateString("es-CO"),
@@ -30,15 +55,22 @@ export function mapQuoteToDoc(q: QuoteWithRels): QuoteDocData {
     direccionEnvio: q.direccionEnvio ?? "",
     observacion: q.observacion ?? "",
     estado: q.estado,
-    items: q.items.map((it) => ({
-      referencia: it.referencia ?? "",
-      descripcion: it.descripcion ?? "",
-      acabados: it.acabados ?? "",
-      precio: Number(it.precio),
-      cantidad: it.cantidad,
-      descuentoPct: Number(it.descuentoPct),
-      total: Number(it.total),
-    })),
+    // Una carátula sale como una sola entrada con la suma de sus productos.
+    items: groupLineItems(q.items).map(({ item, hijos }) => {
+      if (item.tipo !== "CARATULA") return mapDocItem(item);
+      const suma = sumTotals(hijos);
+      return {
+        tipo: "CARATULA",
+        referencia: "",
+        descripcion: item.descripcion ?? "",
+        acabados: "",
+        precio: suma,
+        cantidad: 1,
+        descuentoPct: 0,
+        total: suma,
+        ...(opts?.detalleCaratulas ? { hijos: hijos.map(mapDocItem) } : {}),
+      };
+    }),
     subtotal: Number(q.subtotal),
     impuesto: Number(q.impuesto),
     total: Number(q.total),

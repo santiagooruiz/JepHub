@@ -9,6 +9,12 @@ import { sendMail } from "@/server/mail";
 import { getErpClient, isErpDbConfigured } from "@/server/ofimatica/client";
 import { resolveErpStatus } from "@/server/ofimatica/status";
 import { clientDisplayName } from "@/features/clients/queries";
+import {
+  cloneLineItemRows,
+  groupLineItems,
+  insertLineItemRows,
+  sumTotals,
+} from "@/features/quotes/line-items";
 import { buildOrderEmail } from "./order-email";
 import type { ActionResult } from "@/features/config/actions";
 import { ORDER_ESTADOS, APPROVAL_KINDS } from "./types";
@@ -46,6 +52,7 @@ async function insertCotizacionErp(
       },
       items: {
         select: {
+          tipo: true,
           referencia: true,
           descripcion: true,
           cantidad: true,
@@ -60,7 +67,8 @@ async function insertCotizacionErp(
 
   try {
     // El ERP crea SOLO una cotización 'CV' (nunca 'PD'/'PX'); el vendedor lo
-    // deriva el SP del maestro MTPROCLI por NIT.
+    // deriva el SP del maestro MTPROCLI por NIT. Las carátulas no viajan:
+    // son títulos sin código en MTMERCIA; solo van sus productos.
     const result = await getErpClient().sendOrder({
       id: order.id,
       numero: order.numero,
@@ -72,14 +80,16 @@ async function insertCotizacionErp(
       clientName: clientDisplayName(order.client),
       ordenCompra: order.ordenCompra,
       direccionEnvio: order.direccionEnvio,
-      items: order.items.map((it) => ({
-        referencia: it.referencia,
-        descripcion: it.descripcion,
-        cantidad: it.cantidad,
-        precio: Number(it.precio),
-        total: Number(it.total),
-        nota: it.observacionesInternas,
-      })),
+      items: order.items
+        .filter((it) => it.tipo === "PRODUCTO")
+        .map((it) => ({
+          referencia: it.referencia,
+          descripcion: it.descripcion,
+          cantidad: it.cantidad,
+          precio: Number(it.precio),
+          total: Number(it.total),
+          nota: it.observacionesInternas,
+        })),
     });
     await db.erpSync.update({
       where: { orderId },
@@ -121,7 +131,7 @@ export async function generateOrderFromQuote(
   const q = await db.quote.findFirst({
     where: { id: quoteId, companyId: user.companyId, deletedAt: null },
     include: {
-      items: true,
+      items: { orderBy: [{ posicion: "asc" }, { id: "asc" }] },
       order: { select: { id: true } },
       client: {
         select: {
@@ -143,12 +153,15 @@ export async function generateOrderFromQuote(
   if (q.estado !== "Aprobada") {
     return { ok: false, error: "La cotización debe estar Aprobada." };
   }
-  if (q.items.length === 0) {
+  // Las validaciones aplican solo a productos: las carátulas son títulos
+  // agrupadores sin referencia ni acabados propios.
+  const productos = q.items.filter((it) => it.tipo === "PRODUCTO");
+  if (productos.length === 0) {
     return { ok: false, error: "La cotización no tiene ítems." };
   }
   // Los acabados (Formica/Canto/Herraje) deben estar definidos: no se genera el
   // pedido si algún ítem sigue "POR DEFINIR" (pendiente de diseño/planos).
-  const porDefinir = q.items.filter((it) =>
+  const porDefinir = productos.filter((it) =>
     it.acabados?.toUpperCase().includes("POR DEFINIR")
   );
   if (porDefinir.length > 0) {
@@ -165,8 +178,8 @@ export async function generateOrderFromQuote(
       error: "El cliente no tiene número de documento (NIT), requerido para generar el pedido.",
     };
   }
-  // Cada ítem debe tener referencia (código de producto, FK a MTMERCIA en el ERP).
-  const sinReferencia = q.items.filter((it) => !it.referencia?.trim());
+  // Cada producto debe tener referencia (código, FK a MTMERCIA en el ERP).
+  const sinReferencia = productos.filter((it) => !it.referencia?.trim());
   if (sinReferencia.length > 0) {
     return {
       ok: false,
@@ -180,37 +193,28 @@ export async function generateOrderFromQuote(
     select: { numero: true },
   });
 
-  const order = await db.order.create({
-    data: {
-      companyId: user.companyId,
-      numero: (last?.numero ?? 0) + 1,
-      clientId: q.clientId,
-      opportunityId: q.opportunityId,
-      quoteId: q.id,
-      advisorId: q.registeredById,
-      formaPago: q.formaPago,
-      direccionEnvio: q.direccionEnvio,
-      subtotal: q.subtotal,
-      impuesto: q.impuesto,
-      total: q.total,
-      items: {
-        create: q.items.map((it) => ({
-          productId: it.productId,
-          imagen: it.imagen,
-          referencia: it.referencia,
-          descripcion: it.descripcion,
-          precio: it.precio,
-          cantidad: it.cantidad,
-          descuentoPct: it.descuentoPct,
-          precioConDesc: it.precioConDesc,
-          acabados: it.acabados,
-          observacionesInternas: it.observacionesInternas,
-          total: it.total,
-        })),
+  // Los ítems se copian con su estructura (carátulas + hijos, ids remapeados)
+  // en 2 pasos por la FK autorreferente parentId.
+  const order = await db.$transaction(async (tx) => {
+    const o = await tx.order.create({
+      data: {
+        companyId: user.companyId,
+        numero: (last?.numero ?? 0) + 1,
+        clientId: q.clientId,
+        opportunityId: q.opportunityId,
+        quoteId: q.id,
+        advisorId: q.registeredById,
+        formaPago: q.formaPago,
+        direccionEnvio: q.direccionEnvio,
+        subtotal: q.subtotal,
+        impuesto: q.impuesto,
+        total: q.total,
+        approvals: { create: APPROVAL_KINDS.map((kind) => ({ kind })) },
+        erpSync: { create: {} },
       },
-      approvals: { create: APPROVAL_KINDS.map((kind) => ({ kind })) },
-      erpSync: { create: {} },
-    },
+    });
+    await insertLineItemRows(tx, cloneLineItemRows(q.items, { orderId: o.id }));
+    return o;
   });
 
   // Inserta la cotización (CV) en el ERP (SQL Server) vía stored procedures. El
@@ -242,15 +246,24 @@ export async function generateOrderFromQuote(
       formaPago: q.formaPago,
       direccionEnvio: q.direccionEnvio,
       ordenCompra: q.ordenCompra,
-      items: q.items.map((it) => ({
-        referencia: it.referencia,
-        descripcion: it.descripcion,
-        acabados: it.acabados,
-        cantidad: it.cantidad,
-        precio: Number(it.precio),
-        descuentoPct: Number(it.descuentoPct),
-        total: Number(it.total),
-      })),
+      // La carátula va como fila-sección (con la suma) seguida de sus
+      // productos: quien ingresa la CV a mano necesita el desglose real.
+      items: groupLineItems(q.items).flatMap(({ item, hijos }) => {
+        const fila = (it: (typeof q.items)[number]) => ({
+          referencia: it.referencia,
+          descripcion: it.descripcion,
+          acabados: it.acabados,
+          cantidad: it.cantidad,
+          precio: Number(it.precio),
+          descuentoPct: Number(it.descuentoPct),
+          total: Number(it.total),
+        });
+        if (item.tipo !== "CARATULA") return [fila(item)];
+        return [
+          { ...fila(item), total: sumTotals(hijos), caratula: true },
+          ...hijos.map(fila),
+        ];
+      }),
       subtotal: Number(q.subtotal),
       impuesto: Number(q.impuesto),
       total: Number(q.total),

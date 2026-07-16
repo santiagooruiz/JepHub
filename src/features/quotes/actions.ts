@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import type { Prisma } from "@prisma/client";
 
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/guard";
@@ -10,6 +11,7 @@ import type { ActionResult } from "@/features/config/actions";
 import { logAutoActivity } from "@/features/activity/log";
 import { clientDisplayName } from "@/features/clients/queries";
 import { QUOTE_ESTADOS, IVA_RATE } from "./types";
+import { cloneLineItemRows, insertLineItemRows } from "./line-items";
 
 type SaveResult = { ok: true; id: string } | { ok: false; error: string };
 
@@ -70,7 +72,7 @@ const nullableStr = z
   .nullable()
   .transform((v) => (v && v.trim() !== "" ? v.trim() : null));
 
-const itemSchema = z.object({
+const productoSchema = z.object({
   productId: nullableStr,
   referencia: nullableStr,
   descripcion: nullableStr,
@@ -80,6 +82,25 @@ const itemSchema = z.object({
   cantidad: z.coerce.number().int().min(1),
   descuentoPct: z.coerce.number().min(0).max(100),
 });
+
+// Entrada de nivel superior: producto suelto o carátula (título) con sus
+// productos. El preprocess asume PRODUCTO si falta `tipo` (payloads viejos).
+const entradaSchema = z.preprocess(
+  (v) =>
+    v && typeof v === "object" && !("tipo" in v)
+      ? { ...v, tipo: "PRODUCTO" }
+      : v,
+  z.discriminatedUnion("tipo", [
+    productoSchema.extend({ tipo: z.literal("PRODUCTO") }),
+    z.object({
+      tipo: z.literal("CARATULA"),
+      titulo: z.string().trim().min(1, "La carátula necesita un título"),
+      hijos: z
+        .array(productoSchema)
+        .min(1, "Cada carátula debe tener al menos un producto"),
+    }),
+  ])
+);
 
 const schema = z.object({
   id: z.string().optional(),
@@ -92,8 +113,71 @@ const schema = z.object({
   direccionEnvio: nullableStr,
   observacion: nullableStr,
   fechaVencimiento: nullableStr,
-  items: z.array(itemSchema).min(1, "Agrega al menos un ítem"),
+  items: z.array(entradaSchema).min(1, "Agrega al menos un ítem"),
 });
+
+type ProductoInput = z.infer<typeof productoSchema>;
+
+function productoRow(it: ProductoInput) {
+  const precioConDesc = it.precio * (1 - it.descuentoPct / 100);
+  return {
+    productId: it.productId,
+    referencia: it.referencia,
+    descripcion: it.descripcion,
+    acabados: it.acabados,
+    observacionesInternas: it.observacionesInternas,
+    precio: it.precio,
+    cantidad: it.cantidad,
+    descuentoPct: it.descuentoPct,
+    precioConDesc,
+    total: precioConDesc * it.cantidad,
+  };
+}
+
+/**
+ * Aplana las entradas (productos y carátulas con hijos) a filas `LineItem` con
+ * `posicion` secuencial. La fila carátula lleva montos en 0 (su valor se deriva
+ * de los hijos), así el subtotal = suma de filas PRODUCTO sin doble conteo.
+ */
+function flattenEntradas(entradas: z.infer<typeof entradaSchema>[]): {
+  rows: Prisma.LineItemCreateManyInput[];
+  subtotal: number;
+} {
+  const rows: Prisma.LineItemCreateManyInput[] = [];
+  let subtotal = 0;
+  let posicion = 0;
+  for (const entrada of entradas) {
+    if (entrada.tipo === "CARATULA") {
+      const caratulaId = globalThis.crypto.randomUUID();
+      rows.push({
+        id: caratulaId,
+        tipo: "CARATULA",
+        posicion: posicion++,
+        descripcion: entrada.titulo,
+        precio: 0,
+        cantidad: 1,
+        descuentoPct: 0,
+        precioConDesc: 0,
+        total: 0,
+      });
+      for (const hijo of entrada.hijos) {
+        const row = productoRow(hijo);
+        subtotal += row.total;
+        rows.push({
+          ...row,
+          tipo: "PRODUCTO",
+          parentId: caratulaId,
+          posicion: posicion++,
+        });
+      }
+    } else {
+      const row = productoRow(entrada);
+      subtotal += row.total;
+      rows.push({ ...row, tipo: "PRODUCTO", posicion: posicion++ });
+    }
+  }
+  return { rows, subtotal };
+}
 
 export async function saveQuote(input: unknown): Promise<SaveResult> {
   const raw = input as { id?: string };
@@ -118,22 +202,7 @@ export async function saveQuote(input: unknown): Promise<SaveResult> {
   });
   if (!client) return { ok: false, error: "Cliente no encontrado." };
 
-  const items = d.items.map((it) => {
-    const precioConDesc = it.precio * (1 - it.descuentoPct / 100);
-    return {
-      productId: it.productId,
-      referencia: it.referencia,
-      descripcion: it.descripcion,
-      acabados: it.acabados,
-      observacionesInternas: it.observacionesInternas,
-      precio: it.precio,
-      cantidad: it.cantidad,
-      descuentoPct: it.descuentoPct,
-      precioConDesc,
-      total: precioConDesc * it.cantidad,
-    };
-  });
-  const subtotal = items.reduce((s, i) => s + i.total, 0);
+  const { rows, subtotal } = flattenEntradas(d.items);
   const impuesto = subtotal * IVA_RATE;
   const total = subtotal + impuesto;
 
@@ -160,13 +229,14 @@ export async function saveQuote(input: unknown): Promise<SaveResult> {
       select: { id: true, numero: true },
     });
     if (!existing) return { ok: false, error: "Cotización no encontrada." };
-    await db.$transaction([
-      db.lineItem.deleteMany({ where: { quoteId: d.id } }),
-      db.quote.update({
-        where: { id: d.id },
-        data: { ...header, items: { create: items } },
-      }),
-    ]);
+    await db.$transaction(async (tx) => {
+      await tx.lineItem.deleteMany({ where: { quoteId: d.id } });
+      await tx.quote.update({ where: { id: d.id }, data: header });
+      await insertLineItemRows(
+        tx,
+        rows.map((r) => ({ ...r, quoteId: d.id! }))
+      );
+    });
     quoteId = d.id;
     await logAutoActivity({
       companyId: user.companyId,
@@ -183,14 +253,20 @@ export async function saveQuote(input: unknown): Promise<SaveResult> {
       orderBy: { numero: "desc" },
       select: { numero: true },
     });
-    const created = await db.quote.create({
-      data: {
-        companyId: user.companyId,
-        numero: (last?.numero ?? 0) + 1,
-        registeredById: user.id,
-        ...header,
-        items: { create: items },
-      },
+    const created = await db.$transaction(async (tx) => {
+      const q = await tx.quote.create({
+        data: {
+          companyId: user.companyId,
+          numero: (last?.numero ?? 0) + 1,
+          registeredById: user.id,
+          ...header,
+        },
+      });
+      await insertLineItemRows(
+        tx,
+        rows.map((r) => ({ ...r, quoteId: q.id }))
+      );
+      return q;
     });
     quoteId = created.id;
     await logAutoActivity({
@@ -231,7 +307,7 @@ export async function duplicateQuote(id: string): Promise<SaveResult> {
 
   const source = await db.quote.findFirst({
     where: { id, companyId: user.companyId, deletedAt: null },
-    include: { items: true },
+    include: { items: { orderBy: [{ posicion: "asc" }, { id: "asc" }] } },
   });
   if (!source) return { ok: false, error: "Cotización no encontrada." };
 
@@ -240,38 +316,31 @@ export async function duplicateQuote(id: string): Promise<SaveResult> {
     orderBy: { numero: "desc" },
     select: { numero: true },
   });
-  const created = await db.quote.create({
-    data: {
-      companyId: user.companyId,
-      numero: (last?.numero ?? 0) + 1,
-      registeredById: user.id,
-      clientId: source.clientId,
-      opportunityId: source.opportunityId,
-      estado: "Pendiente cotización",
-      formaPago: source.formaPago,
-      tiempoEntrega: source.tiempoEntrega,
-      ordenCompra: source.ordenCompra,
-      direccionEnvio: source.direccionEnvio,
-      observacion: source.observacion,
-      fechaVencimiento: source.fechaVencimiento,
-      subtotal: source.subtotal,
-      impuesto: source.impuesto,
-      total: source.total,
-      items: {
-        create: source.items.map((it) => ({
-          productId: it.productId,
-          referencia: it.referencia,
-          descripcion: it.descripcion,
-          acabados: it.acabados,
-          observacionesInternas: it.observacionesInternas,
-          precio: it.precio,
-          cantidad: it.cantidad,
-          descuentoPct: it.descuentoPct,
-          precioConDesc: it.precioConDesc,
-          total: it.total,
-        })),
+  const created = await db.$transaction(async (tx) => {
+    const q = await tx.quote.create({
+      data: {
+        companyId: user.companyId,
+        numero: (last?.numero ?? 0) + 1,
+        registeredById: user.id,
+        clientId: source.clientId,
+        opportunityId: source.opportunityId,
+        estado: "Pendiente cotización",
+        formaPago: source.formaPago,
+        tiempoEntrega: source.tiempoEntrega,
+        ordenCompra: source.ordenCompra,
+        direccionEnvio: source.direccionEnvio,
+        observacion: source.observacion,
+        fechaVencimiento: source.fechaVencimiento,
+        subtotal: source.subtotal,
+        impuesto: source.impuesto,
+        total: source.total,
       },
-    },
+    });
+    await insertLineItemRows(
+      tx,
+      cloneLineItemRows(source.items, { quoteId: q.id })
+    );
+    return q;
   });
 
   if (source.opportunityId) {

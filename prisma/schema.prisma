@@ -496,24 +496,40 @@ model Signature {
   createdAt      DateTime  @default(now())
 }
 
+// PRODUCTO = línea real (referencia/precio). CARATULA = línea-título que agrupa
+// productos hijos (parentId); en el PDF del cliente se muestra sola con la suma.
+enum LineItemTipo {
+  PRODUCTO
+  CARATULA
+}
+
 model LineItem {
-  id                    String   @id @default(cuid())
+  id                    String       @id @default(cuid())
   quoteId               String?
-  quote                 Quote?   @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  quote                 Quote?       @relation(fields: [quoteId], references: [id], onDelete: Cascade)
   orderId               String?
-  order                 Order?   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order                 Order?       @relation(fields: [orderId], references: [id], onDelete: Cascade)
   productId             String?
-  product               Product? @relation(fields: [productId], references: [id])
+  product               Product?     @relation(fields: [productId], references: [id])
+  tipo                  LineItemTipo @default(PRODUCTO)
+  // Jerarquía de 1 nivel: un producto puede pertenecer a una carátula. La fila
+  // carátula guarda montos en 0 (su valor siempre se deriva de los hijos) para
+  // que sum(total) == subtotal se mantenga en cualquier agregación.
+  parentId              String?
+  parent                LineItem?    @relation("CaratulaHijos", fields: [parentId], references: [id], onDelete: Cascade)
+  children              LineItem[]   @relation("CaratulaHijos")
+  // Orden visual explícito (carátula, sus hijos, siguiente entrada…).
+  posicion              Int          @default(0)
   imagen                String?
   referencia            String?
   descripcion           String?
-  precio                Decimal  @db.Decimal(15, 2)
+  precio                Decimal      @db.Decimal(15, 2)
   cantidad              Int
-  descuentoPct          Decimal  @default(0) @db.Decimal(5, 2)
-  precioConDesc         Decimal  @db.Decimal(15, 2)
+  descuentoPct          Decimal      @default(0) @db.Decimal(5, 2)
+  precioConDesc         Decimal      @db.Decimal(15, 2)
   acabados              String?
   observacionesInternas String?
-  total                 Decimal  @db.Decimal(15, 2)
+  total                 Decimal      @db.Decimal(15, 2)
 }
 
 // ─────────────────────────── Diseño ───────────────────────────

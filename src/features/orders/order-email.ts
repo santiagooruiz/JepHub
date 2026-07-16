@@ -35,6 +35,8 @@ export type OrderEmailData = {
     precio: number;
     descuentoPct: number;
     total: number;
+    /** Fila-sección de carátula: solo título y suma; sus productos siguen. */
+    caratula?: boolean;
   }[];
   subtotal: number;
   impuesto: number;
@@ -44,8 +46,14 @@ export type OrderEmailData = {
 export function buildOrderEmail(d: OrderEmailData): { subject: string; html: string } {
   const appUrl = process.env.APP_URL || "http://localhost:3000";
   const filas = d.items
-    .map(
-      (it) => `
+    .map((it) =>
+      it.caratula
+        ? `
+      <tr style="background:#f3f4f6;">
+        <td colspan="5" style="padding:6px 8px;border:1px solid #ddd;font-weight:700;">CARÁTULA: ${esc(it.descripcion) || "—"}</td>
+        <td style="padding:6px 8px;border:1px solid #ddd;text-align:right;font-weight:700;">${money.format(it.total)}</td>
+      </tr>`
+        : `
       <tr>
         <td style="padding:6px 8px;border:1px solid #ddd;">${esc(it.referencia) || "—"}</td>
         <td style="padding:6px 8px;border:1px solid #ddd;">${esc(it.descripcion) || "—"}${

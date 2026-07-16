@@ -116,10 +116,15 @@ export default async function OportunidadDetallePage({
     ? null
     : o.quotes.find((q) => !q.designRequests.length)?.id ?? null;
 
-  // Ítems de cotizaciones aprobadas que aún no generaron pedido
+  // Ítems de cotizaciones aprobadas que aún no generaron pedido (solo
+  // productos: las carátulas son títulos agrupadores, no ítems reales)
   const disponibles = o.quotes
     .filter((q) => q.estado === "Aprobada" && !q.order)
-    .flatMap((q) => q.items.map((it) => ({ quote: q, it })));
+    .flatMap((q) =>
+      q.items
+        .filter((it) => it.tipo === "PRODUCTO")
+        .map((it) => ({ quote: q, it }))
+    );
 
   const quoteRows: OpportunityQuoteRow[] = o.quotes.map((q) => ({
     id: q.id,

@@ -1,4 +1,23 @@
+import { Fragment } from "react";
+
 import { formatMoney } from "./types";
+
+export type QuoteDocItem = {
+  tipo: "PRODUCTO" | "CARATULA";
+  referencia: string;
+  descripcion: string;
+  acabados: string;
+  precio: number;
+  cantidad: number;
+  descuentoPct: number;
+  total: number;
+  /**
+   * Productos internos de una carátula. Solo vienen en la variante interna
+   * "con desglose" (mapQuoteToDoc con detalleCaratulas): de cara al cliente
+   * no deben viajar en los datos del documento.
+   */
+  hijos?: Omit<QuoteDocItem, "tipo" | "hijos">[];
+};
 
 export type QuoteDocData = {
   numero: number;
@@ -14,15 +33,7 @@ export type QuoteDocData = {
   direccionEnvio: string;
   observacion: string;
   estado: string;
-  items: {
-    referencia: string;
-    descripcion: string;
-    acabados: string;
-    precio: number;
-    cantidad: number;
-    descuentoPct: number;
-    total: number;
-  }[];
+  items: QuoteDocItem[];
   subtotal: number;
   impuesto: number;
   total: number;
@@ -37,7 +48,11 @@ function CondRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-/** Documento de cotización estilo factura (usado en impresión y firma). */
+/**
+ * Documento de cotización estilo factura (usado en impresión y firma). Las
+ * carátulas se imprimen como una sola línea con la suma de sus productos; si
+ * los datos traen `hijos` (variante interna "con desglose") se listan debajo.
+ */
 export function QuoteDocument({ q }: { q: QuoteDocData }) {
   return (
     <div className="overflow-hidden rounded-lg border bg-white text-neutral-900 shadow-sm [-webkit-print-color-adjust:exact] [print-color-adjust:exact] print:rounded-none print:border-0 print:shadow-none">
@@ -119,31 +134,76 @@ export function QuoteDocument({ q }: { q: QuoteDocData }) {
             </tr>
           </thead>
           <tbody>
-            {q.items.map((it, i) => (
-              <tr key={i} className="border-b border-neutral-200 align-top">
-                <td className="px-3 py-2.5 font-medium">
-                  {it.referencia || "—"}
-                </td>
-                <td className="w-full px-3 py-2.5">
-                  {it.descripcion || "—"}
-                  {it.acabados && (
-                    <div className="mt-0.5 text-xs text-neutral-500">
-                      {it.acabados}
-                    </div>
-                  )}
-                </td>
-                <td className="px-3 py-2.5 text-right whitespace-nowrap">
-                  {formatMoney(it.precio)}
-                </td>
-                <td className="px-3 py-2.5 text-right">{it.cantidad}</td>
-                <td className="px-3 py-2.5 text-right whitespace-nowrap">
-                  {it.descuentoPct}%
-                </td>
-                <td className="px-3 py-2.5 text-right font-medium whitespace-nowrap">
-                  {formatMoney(it.total)}
-                </td>
-              </tr>
-            ))}
+            {q.items.map((it, i) =>
+              it.tipo === "CARATULA" ? (
+                <Fragment key={i}>
+                  <tr className="border-b border-neutral-200 align-top">
+                    <td className="px-3 py-2.5 font-medium">—</td>
+                    <td className="w-full px-3 py-2.5 font-semibold">
+                      {it.descripcion || "—"}
+                    </td>
+                    <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                      {formatMoney(it.precio)}
+                    </td>
+                    <td className="px-3 py-2.5 text-right">{it.cantidad}</td>
+                    <td className="px-3 py-2.5 text-right">—</td>
+                    <td className="px-3 py-2.5 text-right font-medium whitespace-nowrap">
+                      {formatMoney(it.total)}
+                    </td>
+                  </tr>
+                  {it.hijos?.map((h, j) => (
+                      <tr
+                        key={j}
+                        className="border-b border-neutral-100 align-top text-xs text-neutral-500"
+                      >
+                        <td className="px-3 py-1.5 pl-6">{h.referencia || "—"}</td>
+                        <td className="w-full px-3 py-1.5">
+                          {h.descripcion || "—"}
+                          {h.acabados && (
+                            <div className="mt-0.5 text-[11px] text-neutral-400">
+                              {h.acabados}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-3 py-1.5 text-right whitespace-nowrap">
+                          {formatMoney(h.precio)}
+                        </td>
+                        <td className="px-3 py-1.5 text-right">{h.cantidad}</td>
+                        <td className="px-3 py-1.5 text-right whitespace-nowrap">
+                          {h.descuentoPct}%
+                        </td>
+                        <td className="px-3 py-1.5 text-right whitespace-nowrap">
+                          {formatMoney(h.total)}
+                        </td>
+                      </tr>
+                    ))}
+                </Fragment>
+              ) : (
+                <tr key={i} className="border-b border-neutral-200 align-top">
+                  <td className="px-3 py-2.5 font-medium">
+                    {it.referencia || "—"}
+                  </td>
+                  <td className="w-full px-3 py-2.5">
+                    {it.descripcion || "—"}
+                    {it.acabados && (
+                      <div className="mt-0.5 text-xs text-neutral-500">
+                        {it.acabados}
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                    {formatMoney(it.precio)}
+                  </td>
+                  <td className="px-3 py-2.5 text-right">{it.cantidad}</td>
+                  <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                    {it.descuentoPct}%
+                  </td>
+                  <td className="px-3 py-2.5 text-right font-medium whitespace-nowrap">
+                    {formatMoney(it.total)}
+                  </td>
+                </tr>
+              )
+            )}
           </tbody>
         </table>
 

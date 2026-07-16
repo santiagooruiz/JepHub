@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2 } from "lucide-react";
+import { Layers, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -13,10 +13,16 @@ import { saveQuote, getQuoteClientInfo, type QuoteClientInfo } from "./actions";
 import { QUOTE_ESTADOS, IVA_RATE, formatMoney } from "./types";
 import type { QuoteOptions } from "./queries";
 
+type ItemTipo = "PRODUCTO" | "CARATULA";
+
 type Item = {
   key: string;
+  tipo: ItemTipo;
+  /** key de la carátula a la que pertenece (solo productos dentro de una). */
+  parentKey: string | null;
   productId: string | null;
   referencia: string;
+  /** En carátulas guarda el título (p. ej. "ISLA 8 PUESTOS"). */
   descripcion: string;
   precio: number;
   cantidad: number;
@@ -36,6 +42,9 @@ export type QuoteEditing = {
   observacion: string | null;
   fechaVencimiento: string | null;
   items: {
+    id: string;
+    tipo: string;
+    parentId: string | null;
     productId: string | null;
     referencia: string | null;
     descripcion: string | null;
@@ -52,9 +61,11 @@ const selectCls =
 let counter = 0;
 const newKey = () => `it-${counter++}`;
 
-function emptyItem(): Item {
+function emptyItem(parentKey: string | null = null): Item {
   return {
     key: newKey(),
+    tipo: "PRODUCTO",
+    parentKey,
     productId: null,
     referencia: "",
     descripcion: "",
@@ -63,6 +74,43 @@ function emptyItem(): Item {
     descuentoPct: 0,
     acabados: "",
   };
+}
+
+function emptyCaratula(): Item {
+  return {
+    key: newKey(),
+    tipo: "CARATULA",
+    parentKey: null,
+    productId: null,
+    referencia: "",
+    descripcion: "",
+    precio: 0,
+    cantidad: 1,
+    descuentoPct: 0,
+    acabados: "",
+  };
+}
+
+/** Reconstruye el estado del builder desde las líneas guardadas (ordenadas por
+ * posición: cada hija aparece después de su carátula). */
+function initItems(editingItems: QuoteEditing["items"]): Item[] {
+  const keyById = new Map<string, string>();
+  return editingItems.map((it) => {
+    const key = newKey();
+    keyById.set(it.id, key);
+    return {
+      key,
+      tipo: it.tipo === "CARATULA" ? ("CARATULA" as const) : ("PRODUCTO" as const),
+      parentKey: it.parentId ? (keyById.get(it.parentId) ?? null) : null,
+      productId: it.productId,
+      referencia: it.referencia ?? "",
+      descripcion: it.descripcion ?? "",
+      precio: it.precio,
+      cantidad: it.cantidad,
+      descuentoPct: it.descuentoPct,
+      acabados: it.acabados ?? "",
+    };
+  });
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -96,19 +144,8 @@ export function QuoteBuilder({
     observacion: editing?.observacion ?? "",
     fechaVencimiento: editing?.fechaVencimiento ?? "",
   });
-  const [items, setItems] = React.useState<Item[]>(
-    editing?.items.length
-      ? editing.items.map((it) => ({
-          key: newKey(),
-          productId: it.productId,
-          referencia: it.referencia ?? "",
-          descripcion: it.descripcion ?? "",
-          precio: it.precio,
-          cantidad: it.cantidad,
-          descuentoPct: it.descuentoPct,
-          acabados: it.acabados ?? "",
-        }))
-      : [emptyItem()]
+  const [items, setItems] = React.useState<Item[]>(() =>
+    editing?.items.length ? initItems(editing.items) : [emptyItem()]
   );
   const [error, setError] = React.useState<string | null>(null);
   const [pending, start] = React.useTransition();
@@ -149,6 +186,25 @@ export function QuoteBuilder({
   function setItem(key: string, patch: Partial<Item>) {
     setItems((prev) => prev.map((i) => (i.key === key ? { ...i, ...patch } : i)));
   }
+  /** Quita un ítem; si es una carátula, arrastra también a sus productos. */
+  function removeItem(key: string) {
+    setItems((prev) => prev.filter((i) => i.key !== key && i.parentKey !== key));
+  }
+  /** Agrega un producto dentro de una carátula, tras su último hijo. */
+  function addHijo(caratulaKey: string) {
+    setItems((prev) => {
+      let idx = -1;
+      for (let i = 0; i < prev.length; i++) {
+        if (prev[i].key === caratulaKey || prev[i].parentKey === caratulaKey) {
+          idx = i;
+        }
+      }
+      if (idx < 0) return prev;
+      const next = [...prev];
+      next.splice(idx + 1, 0, emptyItem(caratulaKey));
+      return next;
+    });
+  }
   function pickProduct(key: string, productId: string) {
     const p = options.products.find((x) => x.id === productId);
     if (!p) {
@@ -168,7 +224,12 @@ export function QuoteBuilder({
     const precioConDesc = it.precio * (1 - it.descuentoPct / 100);
     return { ...it, precioConDesc, total: precioConDesc * it.cantidad };
   });
-  const subtotal = rows.reduce((s, r) => s + r.total, 0);
+  const topLevel = rows.filter((r) => !r.parentKey);
+  const hijosDe = (key: string) => rows.filter((r) => r.parentKey === key);
+  // Las carátulas no suman por sí mismas: el subtotal sale de los productos.
+  const subtotal = rows
+    .filter((r) => r.tipo === "PRODUCTO")
+    .reduce((s, r) => s + r.total, 0);
   const impuesto = subtotal * IVA_RATE;
   const total = subtotal + impuesto;
 
@@ -179,20 +240,35 @@ export function QuoteBuilder({
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    const prodPayload = (it: Item) => ({
+      productId: it.productId,
+      referencia: it.referencia,
+      descripcion: it.descripcion,
+      acabados: it.acabados,
+      observacionesInternas: null,
+      precio: it.precio,
+      cantidad: it.cantidad,
+      descuentoPct: it.descuentoPct,
+    });
     start(async () => {
       const res = await saveQuote({
         id: editing?.id,
         ...h,
-        items: items.map((it) => ({
-          productId: it.productId,
-          referencia: it.referencia,
-          descripcion: it.descripcion,
-          acabados: it.acabados,
-          observacionesInternas: null,
-          precio: it.precio,
-          cantidad: it.cantidad,
-          descuentoPct: it.descuentoPct,
-        })),
+        // Payload anidado en el orden visual: productos sueltos y carátulas
+        // con sus hijos (el servidor aplana y asigna posiciones).
+        items: items
+          .filter((it) => !it.parentKey)
+          .map((it) =>
+            it.tipo === "CARATULA"
+              ? {
+                  tipo: "CARATULA" as const,
+                  titulo: it.descripcion,
+                  hijos: items
+                    .filter((x) => x.parentKey === it.key)
+                    .map(prodPayload),
+                }
+              : { tipo: "PRODUCTO" as const, ...prodPayload(it) }
+          ),
       });
       if (res.ok) {
         toast.success(
@@ -205,6 +281,117 @@ export function QuoteBuilder({
         toast.error(res.error);
       }
     });
+  }
+
+  type Row = (typeof rows)[number];
+
+  function renderCaratulaRow(r: Row) {
+    const totalCaratula = hijosDe(r.key).reduce((s, h) => s + h.total, 0);
+    return (
+      <tr className="border-b bg-muted/40 align-middle">
+        <td className="px-2 py-2" colSpan={2}>
+          <div className="flex items-center gap-2">
+            <Layers className="size-4 shrink-0 text-muted-foreground" />
+            <Input
+              value={r.descripcion}
+              onChange={(e) => setItem(r.key, { descripcion: e.target.value })}
+              placeholder="Título de la carátula (p. ej. ISLA 8 PUESTOS)"
+              className="font-medium"
+              aria-label="Título de la carátula"
+            />
+          </div>
+        </td>
+        <td className="px-2 py-2 text-right" colSpan={3}>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            onClick={() => addHijo(r.key)}
+          >
+            <Plus className="size-4" /> Producto
+          </Button>
+        </td>
+        <td className="px-2 py-2 text-right tabular font-semibold whitespace-nowrap">
+          {formatMoney(totalCaratula)}
+        </td>
+        <td className="px-2 py-2">
+          <button
+            type="button"
+            onClick={() => removeItem(r.key)}
+            className="inline-flex size-8 items-center justify-center rounded-md text-[hsl(var(--destructive))] hover:bg-destructive/10"
+            aria-label="Quitar carátula y sus productos"
+          >
+            <Trash2 className="size-4" />
+          </button>
+        </td>
+      </tr>
+    );
+  }
+
+  function renderProductoRow(r: Row, esHijo: boolean) {
+    return (
+      <tr key={r.key} className="border-b last:border-0 align-top">
+        <td className={`px-2 py-2 min-w-40 ${esHijo ? "pl-8" : ""}`}>
+          <SearchableSelect
+            value={r.productId ?? ""}
+            onChange={(v) => pickProduct(r.key, v)}
+            options={options.products.map((p) => ({
+              value: p.id,
+              label: p.codigo,
+            }))}
+            placeholder="— libre —"
+            aria-label="Producto"
+          />
+        </td>
+        <td className="px-2 py-2 min-w-48">
+          <Input
+            value={r.descripcion}
+            onChange={(e) => setItem(r.key, { descripcion: e.target.value })}
+            placeholder="Descripción"
+          />
+          {r.acabados && (
+            <span className="text-xs text-muted-foreground">{r.acabados}</span>
+          )}
+        </td>
+        <td className="px-2 py-2">
+          <Input
+            type="number"
+            className="w-28 text-right"
+            value={r.precio}
+            onChange={(e) => setItem(r.key, { precio: Number(e.target.value) || 0 })}
+          />
+        </td>
+        <td className="px-2 py-2">
+          <Input
+            type="number"
+            className="w-16 text-right"
+            value={r.cantidad}
+            onChange={(e) => setItem(r.key, { cantidad: Number(e.target.value) || 0 })}
+          />
+        </td>
+        <td className="px-2 py-2">
+          <Input
+            type="number"
+            className="w-16 text-right"
+            value={r.descuentoPct}
+            onChange={(e) => setItem(r.key, { descuentoPct: Number(e.target.value) || 0 })}
+          />
+        </td>
+        <td className="px-2 py-2 text-right tabular font-medium whitespace-nowrap">
+          {formatMoney(r.total)}
+        </td>
+        <td className="px-2 py-2">
+          <button
+            type="button"
+            onClick={() => removeItem(r.key)}
+            className="inline-flex size-8 items-center justify-center rounded-md text-[hsl(var(--destructive))] hover:bg-destructive/10"
+            aria-label="Quitar ítem"
+          >
+            <Trash2 className="size-4" />
+          </button>
+        </td>
+      </tr>
+    );
   }
 
   return (
@@ -294,11 +481,22 @@ export function QuoteBuilder({
 
       {/* Ítems */}
       <Card className="p-4">
-        <div className="mb-3 flex items-center justify-between">
+        <div className="mb-3 flex items-center justify-between gap-2">
           <h3 className="font-semibold">Ítems</h3>
-          <Button type="button" size="sm" variant="outline" onClick={() => setItems((p) => [...p, emptyItem()])}>
-            <Plus className="size-4" /> Añadir ítem
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => setItems((p) => [...p, emptyCaratula()])}
+              title="Agrupa productos bajo un título; en el PDF del cliente se imprime solo la carátula con la suma"
+            >
+              <Layers className="size-4" /> Añadir carátula
+            </Button>
+            <Button type="button" size="sm" variant="outline" onClick={() => setItems((p) => [...p, emptyItem()])}>
+              <Plus className="size-4" /> Añadir ítem
+            </Button>
+          </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full border-collapse text-sm">
@@ -314,69 +512,16 @@ export function QuoteBuilder({
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => (
-                <tr key={r.key} className="border-b last:border-0 align-top">
-                  <td className="px-2 py-2 min-w-40">
-                    <SearchableSelect
-                      value={r.productId ?? ""}
-                      onChange={(v) => pickProduct(r.key, v)}
-                      options={options.products.map((p) => ({
-                        value: p.id,
-                        label: p.codigo,
-                      }))}
-                      placeholder="— libre —"
-                      aria-label="Producto"
-                    />
-                  </td>
-                  <td className="px-2 py-2 min-w-48">
-                    <Input
-                      value={r.descripcion}
-                      onChange={(e) => setItem(r.key, { descripcion: e.target.value })}
-                      placeholder="Descripción"
-                    />
-                    {r.acabados && (
-                      <span className="text-xs text-muted-foreground">{r.acabados}</span>
-                    )}
-                  </td>
-                  <td className="px-2 py-2">
-                    <Input
-                      type="number"
-                      className="w-28 text-right"
-                      value={r.precio}
-                      onChange={(e) => setItem(r.key, { precio: Number(e.target.value) || 0 })}
-                    />
-                  </td>
-                  <td className="px-2 py-2">
-                    <Input
-                      type="number"
-                      className="w-16 text-right"
-                      value={r.cantidad}
-                      onChange={(e) => setItem(r.key, { cantidad: Number(e.target.value) || 0 })}
-                    />
-                  </td>
-                  <td className="px-2 py-2">
-                    <Input
-                      type="number"
-                      className="w-16 text-right"
-                      value={r.descuentoPct}
-                      onChange={(e) => setItem(r.key, { descuentoPct: Number(e.target.value) || 0 })}
-                    />
-                  </td>
-                  <td className="px-2 py-2 text-right tabular font-medium whitespace-nowrap">
-                    {formatMoney(r.total)}
-                  </td>
-                  <td className="px-2 py-2">
-                    <button
-                      type="button"
-                      onClick={() => setItems((p) => p.filter((i) => i.key !== r.key))}
-                      className="inline-flex size-8 items-center justify-center rounded-md text-[hsl(var(--destructive))] hover:bg-destructive/10"
-                      aria-label="Quitar ítem"
-                    >
-                      <Trash2 className="size-4" />
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {topLevel.map((r) =>
+                r.tipo === "CARATULA" ? (
+                  <React.Fragment key={r.key}>
+                    {renderCaratulaRow(r)}
+                    {hijosDe(r.key).map((hijo) => renderProductoRow(hijo, true))}
+                  </React.Fragment>
+                ) : (
+                  renderProductoRow(r, false)
+                )
+              )}
             </tbody>
           </table>
         </div>

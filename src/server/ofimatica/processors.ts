@@ -42,6 +42,7 @@ export async function processSend(orderId: string): Promise<void> {
       },
       items: {
         select: {
+          tipo: true,
           referencia: true,
           descripcion: true,
           cantidad: true,
@@ -74,14 +75,17 @@ export async function processSend(orderId: string): Promise<void> {
       clientName,
       ordenCompra: order.ordenCompra,
       direccionEnvio: order.direccionEnvio,
-      items: order.items.map((it) => ({
-        referencia: it.referencia,
-        descripcion: it.descripcion,
-        cantidad: it.cantidad,
-        precio: Number(it.precio),
-        total: Number(it.total),
-        nota: it.observacionesInternas,
-      })),
+      // Las carátulas no viajan al ERP (sin código en MTMERCIA): solo productos.
+      items: order.items
+        .filter((it) => it.tipo === "PRODUCTO")
+        .map((it) => ({
+          referencia: it.referencia,
+          descripcion: it.descripcion,
+          cantidad: it.cantidad,
+          precio: Number(it.precio),
+          total: Number(it.total),
+          nota: it.observacionesInternas,
+        })),
     });
 
     await db.erpSync.upsert({
