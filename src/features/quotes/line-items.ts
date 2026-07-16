@@ -11,6 +11,57 @@ type LineItemNode = {
   tipo: string;
 };
 
+/**
+ * Selección de un acabado del ERP para una línea: el acabado que lleva el
+ * producto (ZPROACA/ZACABADOS) y el material/color elegido (MTMERCIA por
+ * CLASIFICA2). `opcionCodigo` null = POR DEFINIR.
+ */
+export type AcabadoSel = {
+  codigo: string;
+  nombre: string;
+  opcionCodigo: string | null;
+  opcionNombre: string | null;
+  opcionColor: string | null;
+};
+
+/** Lee `LineItem.acabadosJson` con tolerancia a datos viejos/malformados. */
+export function parseAcabadosJson(v: unknown): AcabadoSel[] | null {
+  if (!Array.isArray(v)) return null;
+  const out: AcabadoSel[] = [];
+  for (const e of v) {
+    if (!e || typeof e !== "object") continue;
+    const o = e as Record<string, unknown>;
+    if (typeof o.codigo !== "string" || typeof o.nombre !== "string") continue;
+    const str = (k: string) =>
+      typeof o[k] === "string" && o[k] ? (o[k] as string) : null;
+    out.push({
+      codigo: o.codigo,
+      nombre: o.nombre,
+      opcionCodigo: str("opcionCodigo"),
+      opcionNombre: str("opcionNombre"),
+      opcionColor: str("opcionColor"),
+    });
+  }
+  return out.length || v.length === 0 ? out : null;
+}
+
+/**
+ * String de acabados que se muestra/imprime, derivado de las selecciones.
+ * Un acabado sin opción queda "POR DEFINIR" (bloquea generar el pedido).
+ */
+export function acabadosToString(sel: AcabadoSel[]): string {
+  return sel
+    .map(
+      (a) =>
+        `${a.nombre}: ${
+          a.opcionCodigo
+            ? `${a.opcionNombre ?? a.opcionCodigo} [${a.opcionCodigo}]`
+            : "POR DEFINIR"
+        }`
+    )
+    .join(" · ");
+}
+
 export type LineItemGroup<T> = { item: T; hijos: T[] };
 
 /**
@@ -70,6 +121,10 @@ export function cloneLineItemRows(
     descuentoPct: it.descuentoPct,
     precioConDesc: it.precioConDesc,
     acabados: it.acabados,
+    acabadosJson:
+      it.acabadosJson === null
+        ? undefined
+        : (it.acabadosJson as Prisma.InputJsonValue),
     observacionesInternas: it.observacionesInternas,
     total: it.total,
   }));

@@ -498,9 +498,12 @@ model Signature {
 
 // PRODUCTO = línea real (referencia/precio). CARATULA = línea-título que agrupa
 // productos hijos (parentId); en el PDF del cliente se muestra sola con la suma.
+// SEPARADOR = línea de solo texto para seccionar la cotización (ej. "PISO 1");
+// sin montos, sin hijos, visible también en el PDF del cliente.
 enum LineItemTipo {
   PRODUCTO
   CARATULA
+  SEPARADOR
 }
 
 model LineItem {
@@ -527,7 +530,12 @@ model LineItem {
   cantidad              Int
   descuentoPct          Decimal      @default(0) @db.Decimal(5, 2)
   precioConDesc         Decimal      @db.Decimal(15, 2)
+  // Texto mostrado (PDF/correo/bloqueo "POR DEFINIR"). Cuando hay selecciones
+  // estructuradas (acabadosJson) este string se deriva de ellas al guardar.
   acabados              String?
+  // Selecciones de acabados del ERP: [{codigo, nombre, opcionCodigo?, opcionNombre?, opcionColor?}]
+  // (ZPROACA/ZACABADOS del producto; opción elegida de MTMERCIA por CLASIFICA2).
+  acabadosJson          Json?
   observacionesInternas String?
   total                 Decimal      @db.Decimal(15, 2)
 }

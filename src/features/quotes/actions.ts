@@ -7,11 +7,22 @@ import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/guard";
 import { getErpClientByNit } from "@/server/ofimatica/clients";
+import { isErpDbConfigured } from "@/server/ofimatica/db";
+import {
+  getErpAcabadosDeProducto,
+  getErpOpcionesAcabado,
+  type ErpAcabadoOpcion,
+  type ErpAcabadoProducto,
+} from "@/server/ofimatica/acabados";
 import type { ActionResult } from "@/features/config/actions";
 import { logAutoActivity } from "@/features/activity/log";
 import { clientDisplayName } from "@/features/clients/queries";
 import { QUOTE_ESTADOS, IVA_RATE } from "./types";
-import { cloneLineItemRows, insertLineItemRows } from "./line-items";
+import {
+  acabadosToString,
+  cloneLineItemRows,
+  insertLineItemRows,
+} from "./line-items";
 
 type SaveResult = { ok: true; id: string } | { ok: false; error: string };
 
@@ -72,19 +83,32 @@ const nullableStr = z
   .nullable()
   .transform((v) => (v && v.trim() !== "" ? v.trim() : null));
 
+// Selección de un acabado del ERP (ver line-items.ts → AcabadoSel).
+const acabadoSelSchema = z.object({
+  codigo: z.string().trim().min(1),
+  nombre: z.string().trim().min(1),
+  opcionCodigo: nullableStr,
+  opcionNombre: nullableStr,
+  opcionColor: nullableStr,
+});
+
 const productoSchema = z.object({
   productId: nullableStr,
   referencia: nullableStr,
   descripcion: nullableStr,
   acabados: nullableStr,
+  // Selecciones estructuradas de acabados (ERP). null/ausente = sin datos del
+  // ERP (se conserva el texto libre de `acabados`); [] = producto sin acabados.
+  acabadosSel: z.array(acabadoSelSchema).nullish(),
   observacionesInternas: nullableStr,
   precio: z.coerce.number().min(0),
   cantidad: z.coerce.number().int().min(1),
   descuentoPct: z.coerce.number().min(0).max(100),
 });
 
-// Entrada de nivel superior: producto suelto o carátula (título) con sus
-// productos. El preprocess asume PRODUCTO si falta `tipo` (payloads viejos).
+// Entrada de nivel superior: producto suelto, carátula (título) con sus
+// productos, o separador (solo texto, para seccionar la cotización). El
+// preprocess asume PRODUCTO si falta `tipo` (payloads viejos).
 const entradaSchema = z.preprocess(
   (v) =>
     v && typeof v === "object" && !("tipo" in v)
@@ -98,6 +122,10 @@ const entradaSchema = z.preprocess(
       hijos: z
         .array(productoSchema)
         .min(1, "Cada carátula debe tener al menos un producto"),
+    }),
+    z.object({
+      tipo: z.literal("SEPARADOR"),
+      titulo: z.string().trim().min(1, "El separador necesita un texto"),
     }),
   ])
 );
@@ -120,11 +148,20 @@ type ProductoInput = z.infer<typeof productoSchema>;
 
 function productoRow(it: ProductoInput) {
   const precioConDesc = it.precio * (1 - it.descuentoPct / 100);
+  // Con selecciones del ERP el string `acabados` se deriva (un acabado sin
+  // opción queda "POR DEFINIR"); sin ellas se respeta el texto recibido.
+  const sel = it.acabadosSel ?? null;
+  const acabados = sel
+    ? sel.length
+      ? acabadosToString(sel)
+      : null
+    : it.acabados;
   return {
     productId: it.productId,
     referencia: it.referencia,
     descripcion: it.descripcion,
-    acabados: it.acabados,
+    acabados,
+    acabadosJson: sel ?? undefined,
     observacionesInternas: it.observacionesInternas,
     precio: it.precio,
     cantidad: it.cantidad,
@@ -135,9 +172,10 @@ function productoRow(it: ProductoInput) {
 }
 
 /**
- * Aplana las entradas (productos y carátulas con hijos) a filas `LineItem` con
- * `posicion` secuencial. La fila carátula lleva montos en 0 (su valor se deriva
- * de los hijos), así el subtotal = suma de filas PRODUCTO sin doble conteo.
+ * Aplana las entradas (productos, carátulas con hijos y separadores) a filas
+ * `LineItem` con `posicion` secuencial. Carátulas y separadores llevan montos
+ * en 0 (el valor de la carátula se deriva de los hijos), así el subtotal =
+ * suma de filas PRODUCTO sin doble conteo.
  */
 function flattenEntradas(entradas: z.infer<typeof entradaSchema>[]): {
   rows: Prisma.LineItemCreateManyInput[];
@@ -147,7 +185,18 @@ function flattenEntradas(entradas: z.infer<typeof entradaSchema>[]): {
   let subtotal = 0;
   let posicion = 0;
   for (const entrada of entradas) {
-    if (entrada.tipo === "CARATULA") {
+    if (entrada.tipo === "SEPARADOR") {
+      rows.push({
+        tipo: "SEPARADOR",
+        posicion: posicion++,
+        descripcion: entrada.titulo,
+        precio: 0,
+        cantidad: 1,
+        descuentoPct: 0,
+        precioConDesc: 0,
+        total: 0,
+      });
+    } else if (entrada.tipo === "CARATULA") {
       const caratulaId = globalThis.crypto.randomUUID();
       rows.push({
         id: caratulaId,
@@ -177,6 +226,48 @@ function flattenEntradas(entradas: z.infer<typeof entradaSchema>[]): {
     }
   }
   return { rows, subtotal };
+}
+
+/**
+ * Acabados que lleva un producto según el ERP (ZPROACA). Devuelve [] si el
+ * producto no tiene acabados; ok:false si el ERP no está configurado o falla
+ * (el builder conserva entonces el texto libre heredado).
+ */
+export async function getAcabadosProducto(
+  referencia: string
+): Promise<
+  { ok: true; acabados: ErpAcabadoProducto[] } | { ok: false; error: string }
+> {
+  await requirePermission("view", "quotes");
+  const ref = referencia.trim();
+  if (!ref) return { ok: false, error: "Referencia vacía." };
+  if (!isErpDbConfigured()) {
+    return { ok: false, error: "La BD del ERP (ofimática) no está configurada." };
+  }
+  try {
+    return { ok: true, acabados: await getErpAcabadosDeProducto(ref) };
+  } catch {
+    return { ok: false, error: "No se pudieron consultar los acabados en ofimática." };
+  }
+}
+
+/** Opciones (materiales/colores) de un acabado del ERP, para el select. */
+export async function getOpcionesAcabado(
+  codigoAcabado: string
+): Promise<
+  { ok: true; opciones: ErpAcabadoOpcion[] } | { ok: false; error: string }
+> {
+  await requirePermission("view", "quotes");
+  const cod = codigoAcabado.trim();
+  if (!cod) return { ok: false, error: "Código de acabado vacío." };
+  if (!isErpDbConfigured()) {
+    return { ok: false, error: "La BD del ERP (ofimática) no está configurada." };
+  }
+  try {
+    return { ok: true, opciones: await getErpOpcionesAcabado(cod) };
+  } catch {
+    return { ok: false, error: "No se pudieron consultar las opciones en ofimática." };
+  }
 }
 
 export async function saveQuote(input: unknown): Promise<SaveResult> {

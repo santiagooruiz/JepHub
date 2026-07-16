@@ -37,6 +37,8 @@ export type OrderEmailData = {
     total: number;
     /** Fila-sección de carátula: solo título y suma; sus productos siguen. */
     caratula?: boolean;
+    /** Separador: fila de solo texto que secciona la cotización. */
+    separador?: boolean;
   }[];
   subtotal: number;
   impuesto: number;
@@ -47,7 +49,12 @@ export function buildOrderEmail(d: OrderEmailData): { subject: string; html: str
   const appUrl = process.env.APP_URL || "http://localhost:3000";
   const filas = d.items
     .map((it) =>
-      it.caratula
+      it.separador
+        ? `
+      <tr style="background:#e5e7eb;">
+        <td colspan="6" style="padding:6px 8px;border:1px solid #ddd;font-weight:700;text-transform:uppercase;">${esc(it.descripcion) || "—"}</td>
+      </tr>`
+        : it.caratula
         ? `
       <tr style="background:#f3f4f6;">
         <td colspan="5" style="padding:6px 8px;border:1px solid #ddd;font-weight:700;">CARÁTULA: ${esc(it.descripcion) || "—"}</td>

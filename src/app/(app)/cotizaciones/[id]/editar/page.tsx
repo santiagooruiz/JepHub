@@ -7,6 +7,7 @@ import { requirePermission } from "@/lib/guard";
 import { isAsesor } from "@/lib/auth";
 import { quoteScope } from "@/lib/scope";
 import { getQuoteOptions } from "@/features/quotes/queries";
+import { parseAcabadosJson } from "@/features/quotes/line-items";
 import { QuoteBuilder, type QuoteEditing } from "@/features/quotes/quote-builder";
 
 export const dynamic = "force-dynamic";
@@ -54,6 +55,7 @@ export default async function EditarCotizacionPage({
       cantidad: it.cantidad,
       descuentoPct: Number(it.descuentoPct),
       acabados: it.acabados,
+      acabadosSel: parseAcabadosJson(it.acabadosJson),
     })),
   };
 

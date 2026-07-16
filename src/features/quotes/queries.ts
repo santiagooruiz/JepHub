@@ -55,8 +55,12 @@ export function mapQuoteToDoc(
     direccionEnvio: q.direccionEnvio ?? "",
     observacion: q.observacion ?? "",
     estado: q.estado,
-    // Una carátula sale como una sola entrada con la suma de sus productos.
+    // Una carátula sale como una sola entrada con la suma de sus productos;
+    // un separador es una fila de solo texto que secciona el documento.
     items: groupLineItems(q.items).map(({ item, hijos }) => {
+      if (item.tipo === "SEPARADOR") {
+        return { ...mapDocItem(item), tipo: "SEPARADOR" as const };
+      }
       if (item.tipo !== "CARATULA") return mapDocItem(item);
       const suma = sumTotals(hijos);
       return {

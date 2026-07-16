@@ -3,7 +3,7 @@ import { Fragment } from "react";
 import { formatMoney } from "./types";
 
 export type QuoteDocItem = {
-  tipo: "PRODUCTO" | "CARATULA";
+  tipo: "PRODUCTO" | "CARATULA" | "SEPARADOR";
   referencia: string;
   descripcion: string;
   acabados: string;
@@ -135,7 +135,16 @@ export function QuoteDocument({ q }: { q: QuoteDocData }) {
           </thead>
           <tbody>
             {q.items.map((it, i) =>
-              it.tipo === "CARATULA" ? (
+              it.tipo === "SEPARADOR" ? (
+                <tr key={i} className="border-b border-neutral-200 bg-neutral-100">
+                  <td
+                    className="px-3 py-2 font-semibold tracking-wide uppercase"
+                    colSpan={6}
+                  >
+                    {it.descripcion || "—"}
+                  </td>
+                </tr>
+              ) : it.tipo === "CARATULA" ? (
                 <Fragment key={i}>
                   <tr className="border-b border-neutral-200 align-top">
                     <td className="px-3 py-2.5 font-medium">—</td>

@@ -2,18 +2,26 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Layers, Plus, Trash2 } from "lucide-react";
+import { ChevronRight, Layers, Minus, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import { saveQuote, getQuoteClientInfo, type QuoteClientInfo } from "./actions";
+import {
+  saveQuote,
+  getQuoteClientInfo,
+  getAcabadosProducto,
+  getOpcionesAcabado,
+  type QuoteClientInfo,
+} from "./actions";
 import { QUOTE_ESTADOS, IVA_RATE, formatMoney } from "./types";
+import type { AcabadoSel } from "./line-items";
+import type { ErpAcabadoOpcion } from "@/server/ofimatica/acabados";
 import type { QuoteOptions } from "./queries";
 
-type ItemTipo = "PRODUCTO" | "CARATULA";
+type ItemTipo = "PRODUCTO" | "CARATULA" | "SEPARADOR";
 
 type Item = {
   key: string;
@@ -22,12 +30,15 @@ type Item = {
   parentKey: string | null;
   productId: string | null;
   referencia: string;
-  /** En carátulas guarda el título (p. ej. "ISLA 8 PUESTOS"). */
+  /** En carátulas y separadores guarda el título/texto (ej. "ISLA 8 PUESTOS"). */
   descripcion: string;
   precio: number;
   cantidad: number;
   descuentoPct: number;
+  /** Texto libre heredado; se usa solo cuando no hay datos del ERP. */
   acabados: string;
+  /** Acabados del ERP con su opción elegida; null = sin datos del ERP. */
+  acabadosSel: AcabadoSel[] | null;
 };
 
 export type QuoteEditing = {
@@ -52,6 +63,7 @@ export type QuoteEditing = {
     cantidad: number;
     descuentoPct: number;
     acabados: string | null;
+    acabadosSel: AcabadoSel[] | null;
   }[];
 };
 
@@ -73,6 +85,7 @@ function emptyItem(parentKey: string | null = null): Item {
     cantidad: 1,
     descuentoPct: 0,
     acabados: "",
+    acabadosSel: null,
   };
 }
 
@@ -88,7 +101,12 @@ function emptyCaratula(): Item {
     cantidad: 1,
     descuentoPct: 0,
     acabados: "",
+    acabadosSel: null,
   };
+}
+
+function emptySeparador(): Item {
+  return { ...emptyCaratula(), tipo: "SEPARADOR" };
 }
 
 /** Reconstruye el estado del builder desde las líneas guardadas (ordenadas por
@@ -100,7 +118,10 @@ function initItems(editingItems: QuoteEditing["items"]): Item[] {
     keyById.set(it.id, key);
     return {
       key,
-      tipo: it.tipo === "CARATULA" ? ("CARATULA" as const) : ("PRODUCTO" as const),
+      tipo:
+        it.tipo === "CARATULA" || it.tipo === "SEPARADOR"
+          ? (it.tipo as ItemTipo)
+          : ("PRODUCTO" as const),
       parentKey: it.parentId ? (keyById.get(it.parentId) ?? null) : null,
       productId: it.productId,
       referencia: it.referencia ?? "",
@@ -109,6 +130,7 @@ function initItems(editingItems: QuoteEditing["items"]): Item[] {
       cantidad: it.cantidad,
       descuentoPct: it.descuentoPct,
       acabados: it.acabados ?? "",
+      acabadosSel: it.acabadosSel,
     };
   });
 }
@@ -147,6 +169,35 @@ export function QuoteBuilder({
   const [items, setItems] = React.useState<Item[]>(() =>
     editing?.items.length ? initItems(editing.items) : [emptyItem()]
   );
+  // Carátulas colapsadas (ocultan sus productos mientras se organiza la lista).
+  const [colapsadas, setColapsadas] = React.useState<Set<string>>(new Set());
+  // Catálogo de opciones (materiales/colores) por código de acabado del ERP;
+  // se carga perezosamente la primera vez que un producto usa esa familia.
+  const [opcionesAcabado, setOpcionesAcabado] = React.useState<
+    Record<string, ErpAcabadoOpcion[]>
+  >({});
+  const familiasCargando = React.useRef<Set<string>>(new Set());
+
+  function ensureOpciones(codigo: string) {
+    if (!codigo || familiasCargando.current.has(codigo)) return;
+    familiasCargando.current.add(codigo);
+    getOpcionesAcabado(codigo).then((res) => {
+      if (!res.ok) {
+        // ERP no disponible: permite reintentar más tarde.
+        familiasCargando.current.delete(codigo);
+        return;
+      }
+      setOpcionesAcabado((prev) => ({ ...prev, [codigo]: res.opciones }));
+    });
+  }
+
+  // Al editar, precarga los catálogos de las familias ya seleccionadas.
+  React.useEffect(() => {
+    const familias = new Set<string>();
+    items.forEach((it) => it.acabadosSel?.forEach((a) => familias.add(a.codigo)));
+    familias.forEach((f) => ensureOpciones(f));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [error, setError] = React.useState<string | null>(null);
   const [pending, start] = React.useTransition();
 
@@ -190,6 +241,14 @@ export function QuoteBuilder({
   function removeItem(key: string) {
     setItems((prev) => prev.filter((i) => i.key !== key && i.parentKey !== key));
   }
+  function toggleColapso(key: string) {
+    setColapsadas((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
   /** Agrega un producto dentro de una carátula, tras su último hijo. */
   function addHijo(caratulaKey: string) {
     setItems((prev) => {
@@ -204,11 +263,18 @@ export function QuoteBuilder({
       next.splice(idx + 1, 0, emptyItem(caratulaKey));
       return next;
     });
+    // Si la carátula estaba colapsada, se despliega para ver el nuevo producto.
+    setColapsadas((prev) => {
+      if (!prev.has(caratulaKey)) return prev;
+      const next = new Set(prev);
+      next.delete(caratulaKey);
+      return next;
+    });
   }
   function pickProduct(key: string, productId: string) {
     const p = options.products.find((x) => x.id === productId);
     if (!p) {
-      setItem(key, { productId: null });
+      setItem(key, { productId: null, acabadosSel: null });
       return;
     }
     setItem(key, {
@@ -217,7 +283,59 @@ export function QuoteBuilder({
       descripcion: p.nombre,
       precio: p.precioBase,
       acabados: p.acabados ?? "",
+      acabadosSel: null,
     });
+    void cargarAcabados(key, p.codigo);
+  }
+
+  /** Consulta en el ERP qué acabados lleva el producto y arma los selects. */
+  async function cargarAcabados(key: string, referencia: string) {
+    const res = await getAcabadosProducto(referencia);
+    // ERP no disponible / producto sin ficha: se conserva el texto heredado.
+    if (!res.ok) return;
+    setItems((prev) =>
+      prev.map((i) =>
+        i.key === key && i.referencia === referencia
+          ? {
+              ...i,
+              acabadosSel: res.acabados.map((a) => ({
+                ...a,
+                opcionCodigo: null,
+                opcionNombre: null,
+                opcionColor: null,
+              })),
+            }
+          : i
+      )
+    );
+    res.acabados.forEach((a) => ensureOpciones(a.codigo));
+  }
+
+  /** Fija (o limpia, con "") la opción elegida de un acabado del producto. */
+  function setAcabadoOpcion(key: string, codigoAcabado: string, valor: string) {
+    setItems((prev) =>
+      prev.map((i) => {
+        if (i.key !== key || !i.acabadosSel) return i;
+        return {
+          ...i,
+          acabadosSel: i.acabadosSel.map((a) => {
+            if (a.codigo !== codigoAcabado) return a;
+            if (!valor) {
+              return { ...a, opcionCodigo: null, opcionNombre: null, opcionColor: null };
+            }
+            const op = (opcionesAcabado[codigoAcabado] ?? []).find(
+              (o) => o.codigo === valor
+            );
+            return {
+              ...a,
+              opcionCodigo: valor,
+              opcionNombre: op?.nombre ?? null,
+              opcionColor: op?.color ?? null,
+            };
+          }),
+        };
+      })
+    );
   }
 
   const rows = items.map((it) => {
@@ -245,6 +363,7 @@ export function QuoteBuilder({
       referencia: it.referencia,
       descripcion: it.descripcion,
       acabados: it.acabados,
+      acabadosSel: it.acabadosSel,
       observacionesInternas: null,
       precio: it.precio,
       cantidad: it.cantidad,
@@ -254,8 +373,8 @@ export function QuoteBuilder({
       const res = await saveQuote({
         id: editing?.id,
         ...h,
-        // Payload anidado en el orden visual: productos sueltos y carátulas
-        // con sus hijos (el servidor aplana y asigna posiciones).
+        // Payload anidado en el orden visual: productos sueltos, carátulas con
+        // sus hijos y separadores (el servidor aplana y asigna posiciones).
         items: items
           .filter((it) => !it.parentKey)
           .map((it) =>
@@ -267,7 +386,9 @@ export function QuoteBuilder({
                     .filter((x) => x.parentKey === it.key)
                     .map(prodPayload),
                 }
-              : { tipo: "PRODUCTO" as const, ...prodPayload(it) }
+              : it.tipo === "SEPARADOR"
+                ? { tipo: "SEPARADOR" as const, titulo: it.descripcion }
+                : { tipo: "PRODUCTO" as const, ...prodPayload(it) }
           ),
       });
       if (res.ok) {
@@ -286,11 +407,27 @@ export function QuoteBuilder({
   type Row = (typeof rows)[number];
 
   function renderCaratulaRow(r: Row) {
-    const totalCaratula = hijosDe(r.key).reduce((s, h) => s + h.total, 0);
+    const hijos = hijosDe(r.key);
+    const totalCaratula = hijos.reduce((s, h) => s + h.total, 0);
+    const colapsada = colapsadas.has(r.key);
     return (
       <tr className="border-b bg-muted/40 align-middle">
         <td className="px-2 py-2" colSpan={2}>
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => toggleColapso(r.key)}
+              className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted"
+              aria-expanded={!colapsada}
+              aria-label={
+                colapsada ? "Desplegar carátula" : "Colapsar carátula"
+              }
+              title={colapsada ? "Desplegar productos" : "Ocultar productos"}
+            >
+              <ChevronRight
+                className={`size-4 transition-transform ${colapsada ? "" : "rotate-90"}`}
+              />
+            </button>
             <Layers className="size-4 shrink-0 text-muted-foreground" />
             <Input
               value={r.descripcion}
@@ -302,14 +439,19 @@ export function QuoteBuilder({
           </div>
         </td>
         <td className="px-2 py-2 text-right" colSpan={3}>
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            onClick={() => addHijo(r.key)}
-          >
-            <Plus className="size-4" /> Producto
-          </Button>
+          <div className="flex items-center justify-end gap-2 whitespace-nowrap">
+            <span className="text-xs text-muted-foreground">
+              {hijos.length} producto{hijos.length === 1 ? "" : "s"}
+            </span>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() => addHijo(r.key)}
+            >
+              <Plus className="size-4" /> Producto
+            </Button>
+          </div>
         </td>
         <td className="px-2 py-2 text-right tabular font-semibold whitespace-nowrap">
           {formatMoney(totalCaratula)}
@@ -328,9 +470,86 @@ export function QuoteBuilder({
     );
   }
 
-  function renderProductoRow(r: Row, esHijo: boolean) {
+  function renderSeparadorRow(r: Row) {
     return (
-      <tr key={r.key} className="border-b last:border-0 align-top">
+      <tr key={r.key} className="border-b border-dashed align-middle">
+        <td className="px-2 py-2" colSpan={5}>
+          <div className="flex items-center gap-2">
+            <Minus className="size-4 shrink-0 text-muted-foreground" />
+            <Input
+              value={r.descripcion}
+              onChange={(e) => setItem(r.key, { descripcion: e.target.value })}
+              placeholder="Texto del separador (p. ej. PISO 1)"
+              className="font-semibold uppercase"
+              aria-label="Texto del separador"
+            />
+          </div>
+        </td>
+        <td className="px-2 py-2 text-right text-xs text-muted-foreground whitespace-nowrap">
+          Separador
+        </td>
+        <td className="px-2 py-2">
+          <button
+            type="button"
+            onClick={() => removeItem(r.key)}
+            className="inline-flex size-8 items-center justify-center rounded-md text-[hsl(var(--destructive))] hover:bg-destructive/10"
+            aria-label="Quitar separador"
+          >
+            <Trash2 className="size-4" />
+          </button>
+        </td>
+      </tr>
+    );
+  }
+
+  function labelOpcion(o: {
+    codigo: string;
+    nombre: string | null;
+    color: string | null;
+  }): string {
+    const color =
+      o.color && o.color.toLowerCase() !== "varios" ? ` · ${o.color}` : "";
+    return `${o.nombre ?? o.codigo}${color} [${o.codigo}]`;
+  }
+
+  /** Sub-fila con un select buscable por cada acabado del producto (ERP). */
+  function renderAcabadosRow(r: Row, esHijo: boolean) {
+    if (!r.acabadosSel?.length) return null;
+    return (
+      <tr className="border-b last:border-0 bg-muted/10">
+        <td colSpan={7} className={`px-2 pt-1 pb-2 ${esHijo ? "pl-14" : "pl-8"}`}>
+          <div className="flex flex-wrap gap-x-4 gap-y-2">
+            {r.acabadosSel.map((a) => (
+              <div key={a.codigo} className="w-72 space-y-0.5">
+                <label className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+                  {a.nombre}
+                </label>
+                <SearchableSelect
+                  value={a.opcionCodigo ?? ""}
+                  onChange={(v) => setAcabadoOpcion(r.key, a.codigo, v)}
+                  options={(
+                    opcionesAcabado[a.codigo] ??
+                    (a.opcionCodigo
+                      ? [{ codigo: a.opcionCodigo, nombre: a.opcionNombre, color: a.opcionColor }]
+                      : [])
+                  ).map((o) => ({ value: o.codigo, label: labelOpcion(o) }))}
+                  placeholder="POR DEFINIR"
+                  searchPlaceholder="Buscar material o color…"
+                  aria-label={`Acabado ${a.nombre}`}
+                />
+              </div>
+            ))}
+          </div>
+        </td>
+      </tr>
+    );
+  }
+
+  function renderProductoRow(r: Row, esHijo: boolean) {
+    const acabadosRow = renderAcabadosRow(r, esHijo);
+    return (
+      <React.Fragment key={r.key}>
+      <tr className={`${acabadosRow ? "" : "border-b last:border-0"} align-top`}>
         <td className={`px-2 py-2 min-w-40 ${esHijo ? "pl-8" : ""}`}>
           <SearchableSelect
             value={r.productId ?? ""}
@@ -349,7 +568,7 @@ export function QuoteBuilder({
             onChange={(e) => setItem(r.key, { descripcion: e.target.value })}
             placeholder="Descripción"
           />
-          {r.acabados && (
+          {r.acabados && !r.acabadosSel && (
             <span className="text-xs text-muted-foreground">{r.acabados}</span>
           )}
         </td>
@@ -391,6 +610,8 @@ export function QuoteBuilder({
           </button>
         </td>
       </tr>
+      {acabadosRow}
+      </React.Fragment>
     );
   }
 
@@ -488,6 +709,15 @@ export function QuoteBuilder({
               type="button"
               size="sm"
               variant="outline"
+              onClick={() => setItems((p) => [...p, emptySeparador()])}
+              title="Línea de solo texto para seccionar la cotización (ej. PISO 1)"
+            >
+              <Minus className="size-4" /> Añadir separador
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
               onClick={() => setItems((p) => [...p, emptyCaratula()])}
               title="Agrupa productos bajo un título; en el PDF del cliente se imprime solo la carátula con la suma"
             >
@@ -516,8 +746,11 @@ export function QuoteBuilder({
                 r.tipo === "CARATULA" ? (
                   <React.Fragment key={r.key}>
                     {renderCaratulaRow(r)}
-                    {hijosDe(r.key).map((hijo) => renderProductoRow(hijo, true))}
+                    {!colapsadas.has(r.key) &&
+                      hijosDe(r.key).map((hijo) => renderProductoRow(hijo, true))}
                   </React.Fragment>
+                ) : r.tipo === "SEPARADOR" ? (
+                  renderSeparadorRow(r)
                 ) : (
                   renderProductoRow(r, false)
                 )

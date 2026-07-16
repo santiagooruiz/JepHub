@@ -248,6 +248,7 @@ export async function generateOrderFromQuote(
       ordenCompra: q.ordenCompra,
       // La carátula va como fila-sección (con la suma) seguida de sus
       // productos: quien ingresa la CV a mano necesita el desglose real.
+      // El separador va como fila de solo texto.
       items: groupLineItems(q.items).flatMap(({ item, hijos }) => {
         const fila = (it: (typeof q.items)[number]) => ({
           referencia: it.referencia,
@@ -258,6 +259,9 @@ export async function generateOrderFromQuote(
           descuentoPct: Number(it.descuentoPct),
           total: Number(it.total),
         });
+        if (item.tipo === "SEPARADOR") {
+          return [{ ...fila(item), separador: true }];
+        }
         if (item.tipo !== "CARATULA") return [fila(item)];
         return [
           { ...fila(item), total: sumTotals(hijos), caratula: true },

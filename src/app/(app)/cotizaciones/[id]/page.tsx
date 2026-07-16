@@ -1,4 +1,3 @@
-import { Fragment } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronLeft, Pencil, FileText } from "lucide-react";
@@ -10,7 +9,7 @@ import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { clientDisplayName } from "@/features/clients/queries";
-import { groupLineItems, sumTotals } from "@/features/quotes/line-items";
+import { LineItemsTable } from "@/features/quotes/line-items-table";
 import { quoteEstadoVariant, formatMoney } from "@/features/quotes/types";
 import { QuoteStateSelect } from "@/features/quotes/state-select";
 import { SignaturePanel } from "@/features/quotes/signature-panel";
@@ -182,80 +181,21 @@ export default async function CotizacionDetallePage({
             <Info label="Dirección de envío" value={q.direccionEnvio} />
           </div>
 
-          <div className="overflow-x-auto rounded-lg border">
-            <table className="w-full border-collapse text-sm">
-              <thead>
-                <tr className="border-b bg-muted/40 text-left">
-                  <th className="px-3 py-2 font-medium">Referencia</th>
-                  <th className="px-3 py-2 font-medium">Descripción</th>
-                  <th className="px-3 py-2 text-right font-medium">Precio</th>
-                  <th className="px-3 py-2 text-right font-medium">Cant.</th>
-                  <th className="px-3 py-2 text-right font-medium">Desc.%</th>
-                  <th className="px-3 py-2 text-right font-medium">Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {groupLineItems(q.items).map(({ item: it, hijos }) =>
-                  it.tipo === "CARATULA" ? (
-                    <Fragment key={it.id}>
-                      <tr className="border-b bg-muted/30 align-top">
-                        <td className="px-3 py-2 font-semibold" colSpan={5}>
-                          {it.descripcion || "—"}
-                          <span className="ml-2 text-xs font-normal text-muted-foreground">
-                            Carátula · {hijos.length} producto{hijos.length === 1 ? "" : "s"}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2 text-right tabular font-semibold whitespace-nowrap">
-                          {formatMoney(sumTotals(hijos))}
-                        </td>
-                      </tr>
-                      {hijos.map((h) => (
-                        <tr key={h.id} className="border-b last:border-0 align-top">
-                          <td className="px-3 py-2 pl-6 font-medium">{h.referencia || "—"}</td>
-                          <td className="px-3 py-2">
-                            {h.descripcion || "—"}
-                            {h.acabados && (
-                              <div className="text-xs text-muted-foreground">{h.acabados}</div>
-                            )}
-                          </td>
-                          <td className="px-3 py-2 text-right tabular whitespace-nowrap">
-                            {formatMoney(Number(h.precio))}
-                          </td>
-                          <td className="px-3 py-2 text-right tabular">{h.cantidad}</td>
-                          <td className="px-3 py-2 text-right tabular">
-                            {Number(h.descuentoPct)}%
-                          </td>
-                          <td className="px-3 py-2 text-right tabular font-medium whitespace-nowrap">
-                            {formatMoney(Number(h.total))}
-                          </td>
-                        </tr>
-                      ))}
-                    </Fragment>
-                  ) : (
-                    <tr key={it.id} className="border-b last:border-0 align-top">
-                      <td className="px-3 py-2 font-medium">{it.referencia || "—"}</td>
-                      <td className="px-3 py-2">
-                        {it.descripcion || "—"}
-                        {it.acabados && (
-                          <div className="text-xs text-muted-foreground">{it.acabados}</div>
-                        )}
-                      </td>
-                      <td className="px-3 py-2 text-right tabular whitespace-nowrap">
-                        {formatMoney(Number(it.precio))}
-                      </td>
-                      <td className="px-3 py-2 text-right tabular">{it.cantidad}</td>
-                      <td className="px-3 py-2 text-right tabular">
-                        {Number(it.descuentoPct)}%
-                      </td>
-                      <td className="px-3 py-2 text-right tabular font-medium whitespace-nowrap">
-                        {formatMoney(Number(it.total))}
-                      </td>
-                    </tr>
-                  )
-                )}
-              </tbody>
-            </table>
-          </div>
+          <LineItemsTable
+            conDescuento
+            items={q.items.map((it) => ({
+              id: it.id,
+              tipo: it.tipo,
+              parentId: it.parentId,
+              referencia: it.referencia,
+              descripcion: it.descripcion,
+              acabados: it.acabados,
+              precio: Number(it.precio),
+              cantidad: it.cantidad,
+              descuentoPct: Number(it.descuentoPct),
+              total: Number(it.total),
+            }))}
+          />
 
           <div className="mt-4 flex justify-end">
             <div className="w-64 space-y-1 text-sm">
