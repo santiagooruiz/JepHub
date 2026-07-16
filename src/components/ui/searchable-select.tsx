@@ -7,7 +7,12 @@ import { Check, ChevronDown, Search } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
-export type SelectOption = { value: string; label: string };
+export type SelectOption = {
+  value: string;
+  label: string;
+  /** Texto del trigger cuando la opción está elegida (por defecto, `label`). */
+  selectedLabel?: string;
+};
 
 /** Normaliza para buscar sin distinguir mayúsculas ni tildes. */
 function normalize(s: string): string {
@@ -61,11 +66,15 @@ export function SearchableSelect({
   const selected = opts.find((o) => o.value === value);
 
   // Valor actual fuera del catálogo (texto libre heredado): no perderlo.
-  const extra =
+  const extra: SelectOption[] =
     value && !selected ? [{ value, label: value }] : [];
   const all = [...extra, ...opts];
   const filtered = query
-    ? all.filter((o) => normalize(o.label).includes(normalize(query)))
+    ? all.filter((o) =>
+        normalize(`${o.label} ${o.selectedLabel ?? ""}`).includes(
+          normalize(query)
+        )
+      )
     : all;
 
   function pick(v: string) {
@@ -93,7 +102,7 @@ export function SearchableSelect({
           )}
         >
           <span className={cn("truncate", !selected && !value && "text-muted-foreground")}>
-            {selected?.label ?? (value || placeholder)}
+            {selected ? (selected.selectedLabel ?? selected.label) : value || placeholder}
           </span>
           <ChevronDown className="size-4 shrink-0 opacity-50" />
         </button>

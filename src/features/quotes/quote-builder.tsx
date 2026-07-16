@@ -502,14 +502,21 @@ export function QuoteBuilder({
     );
   }
 
-  function labelOpcion(o: {
+  /**
+   * En la lista se muestra "CODIGO = DESCRIPCIO"; ya elegida, el select
+   * muestra el color del acabado (si el color es "varios" o viene vacío,
+   * se deja "CODIGO = DESCRIPCIO" para no perder contexto).
+   */
+  function opcionToOption(o: {
     codigo: string;
     nombre: string | null;
     color: string | null;
-  }): string {
-    const color =
-      o.color && o.color.toLowerCase() !== "varios" ? ` · ${o.color}` : "";
-    return `${o.nombre ?? o.codigo}${color} [${o.codigo}]`;
+  }): { value: string; label: string; selectedLabel: string } {
+    const label = `${o.codigo} = ${o.nombre ?? o.codigo}`;
+    const color = o.color?.trim() ?? "";
+    const selectedLabel =
+      color && color.toLowerCase() !== "varios" ? color : label;
+    return { value: o.codigo, label, selectedLabel };
   }
 
   /** Sub-fila con un select buscable por cada acabado del producto (ERP). */
@@ -532,7 +539,7 @@ export function QuoteBuilder({
                     (a.opcionCodigo
                       ? [{ codigo: a.opcionCodigo, nombre: a.opcionNombre, color: a.opcionColor }]
                       : [])
-                  ).map((o) => ({ value: o.codigo, label: labelOpcion(o) }))}
+                  ).map(opcionToOption)}
                   placeholder="POR DEFINIR"
                   searchPlaceholder="Buscar material o color…"
                   aria-label={`Acabado ${a.nombre}`}
