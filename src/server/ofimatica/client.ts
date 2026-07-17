@@ -32,6 +32,10 @@ export type ErpOrderLineInput = {
   total: number;
   /** Nota del renglón (opcional). */
   nota?: string | null;
+  /** Medidas de producto de área (MVTRADE.ZLARGO/ZANCHO/ZFIGURA). */
+  largo?: number | null;
+  ancho?: number | null;
+  figura?: boolean;
 };
 
 export type ErpOrderInput = {
@@ -224,6 +228,14 @@ export class OfimaticaDbClient implements ErpClient {
     }
 
     // 5. Renglones → sp_gen_mvTrade_Generico_Distri (uno por producto).
+    // Se recuerda el ZRENGLON de las líneas con medidas (productos de área)
+    // para completarlas en el paso 7.
+    const medidasPendientes: {
+      zrenglon: string;
+      largo: number;
+      ancho: number;
+      figura: boolean;
+    }[] = [];
     let zrenglon = 1;
     for (const it of items) {
       const ref = fit(it.referencia, 20);
@@ -248,6 +260,14 @@ export class OfimaticaDbClient implements ErpClient {
         .input("pCODCC", sql.Char(10), cfg.codcc)
         .input("pPLANPED", sql.Char(10), "1")
         .execute("sp_gen_mvTrade_Generico_Distri");
+      if (it.largo != null || it.ancho != null || it.figura) {
+        medidasPendientes.push({
+          zrenglon: String(zrenglon),
+          largo: it.largo ?? 0,
+          ancho: it.ancho ?? 0,
+          figura: Boolean(it.figura),
+        });
+      }
       zrenglon++;
     }
 
@@ -258,6 +278,23 @@ export class OfimaticaDbClient implements ErpClient {
       .input("pTipoDcto", sql.Char(2), tipodcto)
       .input("pNroDcto", sql.Char(10), nro)
       .execute("Calculos_Trade");
+
+    // 7. Medidas de productos de área: UPDATE de los campos Z del renglón que
+    // esta misma inserción acaba de crear (identificado por NRODCTO+ZRENGLON).
+    // El SP no recibe ZLARGO/ZANCHO/ZFIGURA; esto NO es un INSERT a MVTRADE.
+    for (const m of medidasPendientes) {
+      await pool
+        .request()
+        .input("nro", sql.Char(10), nro)
+        .input("z", sql.VarChar(20), m.zrenglon)
+        .input("largo", sql.Numeric(15, 2), m.largo)
+        .input("ancho", sql.Numeric(15, 2), m.ancho)
+        .input("figura", sql.Bit, m.figura ? 1 : 0)
+        .query(`
+          UPDATE MVTRADE SET ZLARGO = @largo, ZANCHO = @ancho, ZFIGURA = @figura
+          WHERE ORIGEN = '${ERP_ORIGEN}' AND TIPODCTO = '${ERP_TIPODCTO_COTIZACION}'
+            AND NRODCTO = @nro AND LTRIM(RTRIM(ZRENGLON)) = @z`);
+    }
 
     return {
       nPedidoOfimatica: nro,

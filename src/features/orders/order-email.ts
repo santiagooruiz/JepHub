@@ -31,6 +31,8 @@ export type OrderEmailData = {
     referencia: string | null;
     descripcion: string | null;
     acabados: string | null;
+    /** Medidas de producto de área ("Largo 1,20 × Ancho 0,60 · Figura"). */
+    medidas?: string | null;
     cantidad: number;
     precio: number;
     descuentoPct: number;
@@ -65,6 +67,8 @@ export function buildOrderEmail(d: OrderEmailData): { subject: string; html: str
         <td style="padding:6px 8px;border:1px solid #ddd;">${esc(it.referencia) || "—"}</td>
         <td style="padding:6px 8px;border:1px solid #ddd;">${esc(it.descripcion) || "—"}${
           it.acabados ? `<br><small style="color:#666;">${esc(it.acabados)}</small>` : ""
+        }${
+          it.medidas ? `<br><small style="color:#666;">${esc(it.medidas)}</small>` : ""
         }</td>
         <td style="padding:6px 8px;border:1px solid #ddd;text-align:right;">${it.cantidad}</td>
         <td style="padding:6px 8px;border:1px solid #ddd;text-align:right;">${money.format(it.precio)}</td>

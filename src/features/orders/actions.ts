@@ -13,6 +13,7 @@ import {
   cloneLineItemRows,
   groupLineItems,
   insertLineItemRows,
+  medidasToString,
   sumTotals,
 } from "@/features/quotes/line-items";
 import { buildOrderEmail } from "./order-email";
@@ -59,6 +60,9 @@ async function insertCotizacionErp(
           precio: true,
           total: true,
           observacionesInternas: true,
+          largo: true,
+          ancho: true,
+          figura: true,
         },
       },
     },
@@ -89,6 +93,9 @@ async function insertCotizacionErp(
           precio: Number(it.precio),
           total: Number(it.total),
           nota: it.observacionesInternas,
+          largo: it.largo === null ? null : Number(it.largo),
+          ancho: it.ancho === null ? null : Number(it.ancho),
+          figura: it.figura,
         })),
     });
     await db.erpSync.update({
@@ -254,6 +261,12 @@ export async function generateOrderFromQuote(
           referencia: it.referencia,
           descripcion: it.descripcion,
           acabados: it.acabados,
+          medidas: medidasToString({
+            esArea: it.esArea,
+            largo: it.largo === null ? null : Number(it.largo),
+            ancho: it.ancho === null ? null : Number(it.ancho),
+            figura: it.figura,
+          }),
           cantidad: it.cantidad,
           precio: Number(it.precio),
           descuentoPct: Number(it.descuentoPct),

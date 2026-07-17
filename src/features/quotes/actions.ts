@@ -10,6 +10,7 @@ import { getErpClientByNit } from "@/server/ofimatica/clients";
 import { isErpDbConfigured } from "@/server/ofimatica/db";
 import {
   getErpAcabadosDeProducto,
+  getErpEsArea,
   getErpOpcionesAcabado,
   type ErpAcabadoOpcion,
   type ErpAcabadoProducto,
@@ -100,6 +101,11 @@ const productoSchema = z.object({
   // Selecciones estructuradas de acabados (ERP). null/ausente = sin datos del
   // ERP (se conserva el texto libre de `acabados`); [] = producto sin acabados.
   acabadosSel: z.array(acabadoSelSchema).nullish(),
+  // Producto de área (CODSBLIN='AREA'): medidas del renglón (MVTRADE).
+  esArea: z.boolean().optional().default(false),
+  largo: z.coerce.number().min(0).nullish(),
+  ancho: z.coerce.number().min(0).nullish(),
+  figura: z.boolean().optional().default(false),
   observacionesInternas: nullableStr,
   precio: z.coerce.number().min(0),
   cantidad: z.coerce.number().int().min(1),
@@ -162,6 +168,11 @@ function productoRow(it: ProductoInput) {
     descripcion: it.descripcion,
     acabados,
     acabadosJson: sel ?? undefined,
+    // Las medidas solo aplican a productos de área.
+    esArea: it.esArea,
+    largo: it.esArea ? (it.largo ?? null) : null,
+    ancho: it.esArea ? (it.ancho ?? null) : null,
+    figura: it.esArea ? it.figura : false,
     observacionesInternas: it.observacionesInternas,
     precio: it.precio,
     cantidad: it.cantidad,
@@ -229,14 +240,16 @@ function flattenEntradas(entradas: z.infer<typeof entradaSchema>[]): {
 }
 
 /**
- * Acabados que lleva un producto según el ERP (ZPROACA). Devuelve [] si el
- * producto no tiene acabados; ok:false si el ERP no está configurado o falla
- * (el builder conserva entonces el texto libre heredado).
+ * Ficha ERP del producto para el builder: qué acabados lleva (ZPROACA; [] si
+ * no tiene) y si es "de área" (CODSBLIN='AREA' → captura largo/ancho/figura).
+ * ok:false si el ERP no está configurado o falla (el builder conserva
+ * entonces el texto libre heredado).
  */
 export async function getAcabadosProducto(
   referencia: string
 ): Promise<
-  { ok: true; acabados: ErpAcabadoProducto[] } | { ok: false; error: string }
+  | { ok: true; acabados: ErpAcabadoProducto[]; esArea: boolean }
+  | { ok: false; error: string }
 > {
   await requirePermission("view", "quotes");
   const ref = referencia.trim();
@@ -245,7 +258,11 @@ export async function getAcabadosProducto(
     return { ok: false, error: "La BD del ERP (ofimática) no está configurada." };
   }
   try {
-    return { ok: true, acabados: await getErpAcabadosDeProducto(ref) };
+    const [acabados, esArea] = await Promise.all([
+      getErpAcabadosDeProducto(ref),
+      getErpEsArea(ref),
+    ]);
+    return { ok: true, acabados, esArea };
   } catch {
     return { ok: false, error: "No se pudieron consultar los acabados en ofimática." };
   }

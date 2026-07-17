@@ -7,6 +7,8 @@ export type QuoteDocItem = {
   referencia: string;
   descripcion: string;
   acabados: string;
+  /** Medidas de producto de área ("Largo 1,20 × Ancho 0,60 · Figura"). */
+  medidas: string;
   precio: number;
   cantidad: number;
   descuentoPct: number;
@@ -173,6 +175,11 @@ export function QuoteDocument({ q }: { q: QuoteDocData }) {
                               {h.acabados}
                             </div>
                           )}
+                          {h.medidas && (
+                            <div className="mt-0.5 text-[11px] text-neutral-400">
+                              {h.medidas}
+                            </div>
+                          )}
                         </td>
                         <td className="px-3 py-1.5 text-right whitespace-nowrap">
                           {formatMoney(h.precio)}
@@ -197,6 +204,11 @@ export function QuoteDocument({ q }: { q: QuoteDocData }) {
                     {it.acabados && (
                       <div className="mt-0.5 text-xs text-neutral-500">
                         {it.acabados}
+                      </div>
+                    )}
+                    {it.medidas && (
+                      <div className="mt-0.5 text-xs text-neutral-500">
+                        {it.medidas}
                       </div>
                     )}
                   </td>

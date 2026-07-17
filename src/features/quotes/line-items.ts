@@ -46,6 +46,26 @@ export function parseAcabadosJson(v: unknown): AcabadoSel[] | null {
 }
 
 /**
+ * Texto de medidas de un producto de área ("Largo 1,20 × Ancho 0,60 · Figura")
+ * para detalle/PDF/correo. null si no hay nada que mostrar.
+ */
+export function medidasToString(m: {
+  esArea: boolean;
+  largo: number | null;
+  ancho: number | null;
+  figura: boolean;
+}): string | null {
+  if (!m.esArea || (m.largo === null && m.ancho === null && !m.figura)) {
+    return null;
+  }
+  const fmt = (n: number | null) =>
+    n === null ? "—" : n.toLocaleString("es-CO", { maximumFractionDigits: 2 });
+  const partes = [`Largo ${fmt(m.largo)} × Ancho ${fmt(m.ancho)}`];
+  if (m.figura) partes.push("Figura");
+  return partes.join(" · ");
+}
+
+/**
  * String de acabados que se muestra/imprime, derivado de las selecciones.
  * Un acabado sin opción queda "POR DEFINIR" (bloquea generar el pedido).
  */
@@ -125,6 +145,10 @@ export function cloneLineItemRows(
       it.acabadosJson === null
         ? undefined
         : (it.acabadosJson as Prisma.InputJsonValue),
+    esArea: it.esArea,
+    largo: it.largo,
+    ancho: it.ancho,
+    figura: it.figura,
     observacionesInternas: it.observacionesInternas,
     total: it.total,
   }));

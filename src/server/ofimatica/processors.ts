@@ -49,6 +49,9 @@ export async function processSend(orderId: string): Promise<void> {
           precio: true,
           total: true,
           observacionesInternas: true,
+          largo: true,
+          ancho: true,
+          figura: true,
         },
       },
     },
@@ -85,6 +88,9 @@ export async function processSend(orderId: string): Promise<void> {
           precio: Number(it.precio),
           total: Number(it.total),
           nota: it.observacionesInternas,
+          largo: it.largo === null ? null : Number(it.largo),
+          ancho: it.ancho === null ? null : Number(it.ancho),
+          figura: it.figura,
         })),
     });
 

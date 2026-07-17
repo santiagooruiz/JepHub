@@ -1,0 +1,5 @@
+-- AlterTable
+ALTER TABLE "LineItem" ADD COLUMN     "ancho" DECIMAL(15,2),
+ADD COLUMN     "esArea" BOOLEAN NOT NULL DEFAULT false,
+ADD COLUMN     "figura" BOOLEAN NOT NULL DEFAULT false,
+ADD COLUMN     "largo" DECIMAL(15,2);

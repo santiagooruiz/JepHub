@@ -17,7 +17,11 @@ import {
   type QuoteClientInfo,
 } from "./actions";
 import { QUOTE_ESTADOS, IVA_RATE, formatMoney } from "./types";
-import type { AcabadoSel } from "./line-items";
+import {
+  acabadosToString,
+  medidasToString,
+  type AcabadoSel,
+} from "./line-items";
 import type { ErpAcabadoOpcion } from "@/server/ofimatica/acabados";
 import type { QuoteOptions } from "./queries";
 
@@ -39,6 +43,11 @@ type Item = {
   acabados: string;
   /** Acabados del ERP con su opción elegida; null = sin datos del ERP. */
   acabadosSel: AcabadoSel[] | null;
+  /** Producto de área (CODSBLIN='AREA'): captura largo/ancho/figura. */
+  esArea: boolean;
+  largo: number | null;
+  ancho: number | null;
+  figura: boolean;
 };
 
 export type QuoteEditing = {
@@ -64,6 +73,10 @@ export type QuoteEditing = {
     descuentoPct: number;
     acabados: string | null;
     acabadosSel: AcabadoSel[] | null;
+    esArea: boolean;
+    largo: number | null;
+    ancho: number | null;
+    figura: boolean;
   }[];
 };
 
@@ -86,23 +99,15 @@ function emptyItem(parentKey: string | null = null): Item {
     descuentoPct: 0,
     acabados: "",
     acabadosSel: null,
+    esArea: false,
+    largo: null,
+    ancho: null,
+    figura: false,
   };
 }
 
 function emptyCaratula(): Item {
-  return {
-    key: newKey(),
-    tipo: "CARATULA",
-    parentKey: null,
-    productId: null,
-    referencia: "",
-    descripcion: "",
-    precio: 0,
-    cantidad: 1,
-    descuentoPct: 0,
-    acabados: "",
-    acabadosSel: null,
-  };
+  return { ...emptyItem(), tipo: "CARATULA" };
 }
 
 function emptySeparador(): Item {
@@ -131,6 +136,10 @@ function initItems(editingItems: QuoteEditing["items"]): Item[] {
       descuentoPct: it.descuentoPct,
       acabados: it.acabados ?? "",
       acabadosSel: it.acabadosSel,
+      esArea: it.esArea,
+      largo: it.largo,
+      ancho: it.ancho,
+      figura: it.figura,
     };
   });
 }
@@ -171,6 +180,19 @@ export function QuoteBuilder({
   );
   // Carátulas colapsadas (ocultan sus productos mientras se organiza la lista).
   const [colapsadas, setColapsadas] = React.useState<Set<string>>(new Set());
+  // Productos con la sección de acabados/medidas oculta (desplegable por fila).
+  const [detallesOcultos, setDetallesOcultos] = React.useState<Set<string>>(
+    new Set()
+  );
+
+  function toggleDetalles(key: string) {
+    setDetallesOcultos((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
   // Catálogo de opciones (materiales/colores) por código de acabado del ERP;
   // se carga perezosamente la primera vez que un producto usa esa familia.
   const [opcionesAcabado, setOpcionesAcabado] = React.useState<
@@ -284,11 +306,15 @@ export function QuoteBuilder({
       precio: p.precioBase,
       acabados: p.acabados ?? "",
       acabadosSel: null,
+      esArea: false,
+      largo: null,
+      ancho: null,
+      figura: false,
     });
     void cargarAcabados(key, p.codigo);
   }
 
-  /** Consulta en el ERP qué acabados lleva el producto y arma los selects. */
+  /** Consulta la ficha ERP del producto: acabados (selects) y si es de área. */
   async function cargarAcabados(key: string, referencia: string) {
     const res = await getAcabadosProducto(referencia);
     // ERP no disponible / producto sin ficha: se conserva el texto heredado.
@@ -298,6 +324,7 @@ export function QuoteBuilder({
         i.key === key && i.referencia === referencia
           ? {
               ...i,
+              esArea: res.esArea,
               acabadosSel: res.acabados.map((a) => ({
                 ...a,
                 opcionCodigo: null,
@@ -364,6 +391,10 @@ export function QuoteBuilder({
       descripcion: it.descripcion,
       acabados: it.acabados,
       acabadosSel: it.acabadosSel,
+      esArea: it.esArea,
+      largo: it.largo,
+      ancho: it.ancho,
+      figura: it.figura,
       observacionesInternas: null,
       precio: it.precio,
       cantidad: it.cantidad,
@@ -519,14 +550,17 @@ export function QuoteBuilder({
     return { value: o.codigo, label, selectedLabel };
   }
 
-  /** Sub-fila con un select buscable por cada acabado del producto (ERP). */
+  /**
+   * Sub-fila de detalles del producto: un select buscable por cada acabado
+   * (ERP) y, si es producto de área, largo/ancho + checkbox de figura.
+   */
   function renderAcabadosRow(r: Row, esHijo: boolean) {
-    if (!r.acabadosSel?.length) return null;
+    if (!r.acabadosSel?.length && !r.esArea) return null;
     return (
       <tr className="border-b last:border-0 bg-muted/10">
         <td colSpan={7} className={`px-2 pt-1 pb-2 ${esHijo ? "pl-14" : "pl-8"}`}>
-          <div className="flex flex-wrap gap-x-4 gap-y-2">
-            {r.acabadosSel.map((a) => (
+          <div className="flex flex-wrap items-end gap-x-4 gap-y-2">
+            {r.acabadosSel?.map((a) => (
               <div key={a.codigo} className="w-72 space-y-0.5">
                 <label className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
                   {a.nombre}
@@ -546,6 +580,55 @@ export function QuoteBuilder({
                 />
               </div>
             ))}
+            {r.esArea && (
+              <>
+                <div className="w-28 space-y-0.5">
+                  <label className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+                    Largo
+                  </label>
+                  <Input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    className="text-right"
+                    value={r.largo ?? ""}
+                    onChange={(e) =>
+                      setItem(r.key, {
+                        largo: e.target.value === "" ? null : Number(e.target.value) || 0,
+                      })
+                    }
+                    aria-label="Largo"
+                  />
+                </div>
+                <div className="w-28 space-y-0.5">
+                  <label className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+                    Ancho
+                  </label>
+                  <Input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    className="text-right"
+                    value={r.ancho ?? ""}
+                    onChange={(e) =>
+                      setItem(r.key, {
+                        ancho: e.target.value === "" ? null : Number(e.target.value) || 0,
+                      })
+                    }
+                    aria-label="Ancho"
+                  />
+                </div>
+                <label className="flex h-9 cursor-pointer items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={r.figura}
+                    onChange={(e) => setItem(r.key, { figura: e.target.checked })}
+                    className="size-4 cursor-pointer accent-[#12A2BC]"
+                  />
+                  Figura
+                </label>
+              </>
+            )}
           </div>
         </td>
       </tr>
@@ -553,7 +636,25 @@ export function QuoteBuilder({
   }
 
   function renderProductoRow(r: Row, esHijo: boolean) {
-    const acabadosRow = renderAcabadosRow(r, esHijo);
+    const tieneDetalles = Boolean(r.acabadosSel?.length || r.esArea);
+    const oculto = detallesOcultos.has(r.key);
+    const acabadosRow =
+      tieneDetalles && !oculto ? renderAcabadosRow(r, esHijo) : null;
+    // Resumen compacto de lo elegido mientras la sección está oculta.
+    const resumen =
+      tieneDetalles && oculto
+        ? [
+            r.acabadosSel?.length ? acabadosToString(r.acabadosSel) : null,
+            medidasToString({
+              esArea: r.esArea,
+              largo: r.largo,
+              ancho: r.ancho,
+              figura: r.figura,
+            }),
+          ]
+            .filter(Boolean)
+            .join(" · ")
+        : "";
     return (
       <React.Fragment key={r.key}>
       <tr className={`${acabadosRow ? "" : "border-b last:border-0"} align-top`}>
@@ -577,6 +678,9 @@ export function QuoteBuilder({
           />
           {r.acabados && !r.acabadosSel && (
             <span className="text-xs text-muted-foreground">{r.acabados}</span>
+          )}
+          {resumen && (
+            <span className="text-xs text-muted-foreground">{resumen}</span>
           )}
         </td>
         <td className="px-2 py-2">
@@ -607,14 +711,38 @@ export function QuoteBuilder({
           {formatMoney(r.total)}
         </td>
         <td className="px-2 py-2">
-          <button
-            type="button"
-            onClick={() => removeItem(r.key)}
-            className="inline-flex size-8 items-center justify-center rounded-md text-[hsl(var(--destructive))] hover:bg-destructive/10"
-            aria-label="Quitar ítem"
-          >
-            <Trash2 className="size-4" />
-          </button>
+          <div className="flex items-center whitespace-nowrap">
+            {tieneDetalles && (
+              <button
+                type="button"
+                onClick={() => toggleDetalles(r.key)}
+                className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted"
+                aria-expanded={!oculto}
+                aria-label={
+                  oculto
+                    ? "Mostrar acabados y medidas"
+                    : "Ocultar acabados y medidas"
+                }
+                title={
+                  oculto
+                    ? "Mostrar acabados y medidas"
+                    : "Ocultar acabados y medidas"
+                }
+              >
+                <ChevronRight
+                  className={`size-4 transition-transform ${oculto ? "" : "rotate-90"}`}
+                />
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => removeItem(r.key)}
+              className="inline-flex size-8 items-center justify-center rounded-md text-[hsl(var(--destructive))] hover:bg-destructive/10"
+              aria-label="Quitar ítem"
+            >
+              <Trash2 className="size-4" />
+            </button>
+          </div>
         </td>
       </tr>
       {acabadosRow}
@@ -728,7 +856,7 @@ export function QuoteBuilder({
               onClick={() => setItems((p) => [...p, emptyCaratula()])}
               title="Agrupa productos bajo un título; en el PDF del cliente se imprime solo la carátula con la suma"
             >
-              <Layers className="size-4" /> Añadir carátula
+              <Layers className="size-4" /> Añadir titulo
             </Button>
             <Button type="button" size="sm" variant="outline" onClick={() => setItems((p) => [...p, emptyItem()])}>
               <Plus className="size-4" /> Añadir ítem

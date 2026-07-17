@@ -56,6 +56,10 @@ export default async function EditarCotizacionPage({
       descuentoPct: Number(it.descuentoPct),
       acabados: it.acabados,
       acabadosSel: parseAcabadosJson(it.acabadosJson),
+      esArea: it.esArea,
+      largo: it.largo === null ? null : Number(it.largo),
+      ancho: it.ancho === null ? null : Number(it.ancho),
+      figura: it.figura,
     })),
   };
 

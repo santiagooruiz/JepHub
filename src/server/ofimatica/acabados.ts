@@ -25,6 +25,21 @@ export type ErpAcabadoOpcion = {
   color: string;
 };
 
+/**
+ * true si el producto es "de área" (MTMERCIA.CODSBLIN = 'AREA'): sus renglones
+ * llevan largo/ancho/figura (MVTRADE.ZLARGO/ZANCHO/ZFIGURA).
+ */
+export async function getErpEsArea(referencia: string): Promise<boolean> {
+  const pool = await getErpPool();
+  const res = await pool
+    .request()
+    .input("ref", sql.VarChar(20), referencia.trim())
+    .query(`
+      SELECT LTRIM(RTRIM(CODSBLIN)) AS codsblin
+      FROM MTMERCIA WHERE CODIGO = @ref`);
+  return (res.recordset[0]?.codsblin as string | undefined)?.toUpperCase() === "AREA";
+}
+
 /** Acabados que lleva un producto según el ERP (ZPROACA + ZACABADOS). */
 export async function getErpAcabadosDeProducto(
   referencia: string

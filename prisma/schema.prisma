@@ -536,6 +536,12 @@ model LineItem {
   // Selecciones de acabados del ERP: [{codigo, nombre, opcionCodigo?, opcionNombre?, opcionColor?}]
   // (ZPROACA/ZACABADOS del producto; opción elegida de MTMERCIA por CLASIFICA2).
   acabadosJson          Json?
+  // Producto "de área" (MTMERCIA.CODSBLIN='AREA'): medidas del renglón que se
+  // escriben en MVTRADE (ZLARGO/ZANCHO/ZFIGURA) al insertar la CV en el ERP.
+  esArea                Boolean      @default(false)
+  largo                 Decimal?     @db.Decimal(15, 2)
+  ancho                 Decimal?     @db.Decimal(15, 2)
+  figura                Boolean      @default(false)
   observacionesInternas String?
   total                 Decimal      @db.Decimal(15, 2)
 }

@@ -2,7 +2,7 @@ import { Prisma, type LineItem } from "@prisma/client";
 
 import { db } from "@/lib/db";
 import { clientDisplayName } from "@/features/clients/queries";
-import { groupLineItems, sumTotals } from "./line-items";
+import { groupLineItems, medidasToString, sumTotals } from "./line-items";
 import type { QuoteDocData, QuoteDocItem } from "./quote-document";
 
 export const quoteDocInclude = Prisma.validator<Prisma.QuoteInclude>()({
@@ -20,6 +20,13 @@ function mapDocItem(it: LineItem): QuoteDocItem {
     referencia: it.referencia ?? "",
     descripcion: it.descripcion ?? "",
     acabados: it.acabados ?? "",
+    medidas:
+      medidasToString({
+        esArea: it.esArea,
+        largo: it.largo === null ? null : Number(it.largo),
+        ancho: it.ancho === null ? null : Number(it.ancho),
+        figura: it.figura,
+      }) ?? "",
     precio: Number(it.precio),
     cantidad: it.cantidad,
     descuentoPct: Number(it.descuentoPct),
@@ -68,6 +75,7 @@ export function mapQuoteToDoc(
         referencia: "",
         descripcion: item.descripcion ?? "",
         acabados: "",
+        medidas: "",
         precio: suma,
         cantidad: 1,
         descuentoPct: 0,

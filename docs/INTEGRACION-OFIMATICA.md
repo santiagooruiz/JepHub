@@ -38,10 +38,11 @@ está en `CLAUDE.md` y hay un guard en el código.
 | Tabla | Rol | Notas |
 |-------|-----|-------|
 | `TRADE` | Cabecera del documento (246 col., todas con default) | Se crea con `sp_gen_trade_generico_distribuidores` |
-| `MVTRADE` | Renglones (líneas de producto) | Se crean con `sp_gen_mvTrade_Generico_Distri`; también guardan acabados `ZFORMICA`/`ZCANTO`/`ZHERRAJE` |
+| `MVTRADE` | Renglones (líneas de producto) | Se crean con `sp_gen_mvTrade_Generico_Distri`; también guardan acabados `ZFORMICA`/`ZCANTO`/`ZHERRAJE` y medidas `ZLARGO`/`ZANCHO` (numeric 15,2) + `ZFIGURA` (bit). El SP no recibe las medidas: JEP-Hub las completa con un **UPDATE** de esos campos Z sobre los renglones que él mismo acaba de crear (`ORIGEN='FAC' AND TIPODCTO='CV' AND NRODCTO AND ZRENGLON`), tras `Calculos_Trade` |
 | `TRADEMAS` | Extensión de producción: **hitos** (solo lectura) | `ZFTAPI` (Tapicería), `ZFLISTO` (Listo), `ZFDESPA` (Despacho) — `datetime`; `'1900-01-01'` = sin registrar |
 | `ZPROACA` | Qué **acabados** lleva cada producto (solo lectura) | `PRODUCTO` → `ACABADO` (código de `ZACABADOS`); 0..N filas por producto. Lo lee `src/server/ofimatica/acabados.ts` para los selects del builder de cotización |
 | `ZACABADOS` | Catálogo de acabados (solo lectura) | `CODIGO`/`NOMBRE`: 002=HERRAJE, 003=FORMICA, 004=CANTO, 001=PAÑO, 005=POLIPROPILENO… |
+| `MTMERCIA.CODSBLIN` | Sub-línea del producto (solo lectura) | `'AREA'` marca los **productos de área**: sus renglones capturan largo/ancho/figura en JEP-Hub y se escriben en `MVTRADE.ZLARGO/ZANCHO/ZFIGURA` al insertar la CV |
 | `MT1CLAF` | Colores/clasificación 1 (solo lectura) | Las **opciones** de un acabado son ítems de `MTMERCIA` con `CLASIFICA2` = código del acabado (HABILITADO=1, ESPRODUCTO=1), su color viene de `CLASIFICA1` → `MT1CLAF` |
 
 Maestros de los que depende la CV (FKs reales verificadas): `NIT` → `MTPROCLI`

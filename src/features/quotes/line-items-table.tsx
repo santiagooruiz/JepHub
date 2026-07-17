@@ -7,7 +7,7 @@
 import * as React from "react";
 import { ChevronRight } from "lucide-react";
 
-import { groupLineItems } from "./line-items";
+import { groupLineItems, medidasToString } from "./line-items";
 import { formatMoney } from "./types";
 
 export type LineItemRowData = {
@@ -17,6 +17,10 @@ export type LineItemRowData = {
   referencia: string | null;
   descripcion: string | null;
   acabados: string | null;
+  esArea: boolean;
+  largo: number | null;
+  ancho: number | null;
+  figura: boolean;
   precio: number;
   cantidad: number;
   descuentoPct: number;
@@ -46,6 +50,7 @@ export function LineItemsTable({
   }
 
   function productoRow(it: LineItemRowData, esHijo: boolean) {
+    const medidas = medidasToString(it);
     return (
       <tr key={it.id} className="border-b last:border-0 align-top">
         <td className={`px-3 py-2 font-medium ${esHijo ? "pl-9" : ""}`}>
@@ -55,6 +60,9 @@ export function LineItemsTable({
           {it.descripcion || "—"}
           {it.acabados && (
             <div className="text-xs text-muted-foreground">{it.acabados}</div>
+          )}
+          {medidas && (
+            <div className="text-xs text-muted-foreground">{medidas}</div>
           )}
         </td>
         <td className="px-3 py-2 text-right tabular whitespace-nowrap">
