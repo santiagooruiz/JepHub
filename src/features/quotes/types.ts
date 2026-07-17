@@ -45,3 +45,15 @@ export function formatMoney(n: number): string {
 }
 
 export const IVA_RATE = 0.19;
+
+/**
+ * Referencia del ítem ESPECIAL: producto por desarrollar, sin precio (va en 0);
+ * solo lleva cantidad, descripción y un archivo opcional. Al guardar una
+ * cotización con este código se crea/asegura una solicitud en Backlog Diseño y
+ * bloquea generar el pedido hasta que diseño lo resuelva.
+ */
+export const CODIGO_ESPECIAL = "CODIGO-ESPECIAL";
+
+export function esItemEspecial(referencia: string | null | undefined): boolean {
+  return (referencia ?? "").trim().toUpperCase() === CODIGO_ESPECIAL;
+}

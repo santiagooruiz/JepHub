@@ -146,6 +146,7 @@ export default async function PedidoDetallePage({
               largo: it.largo === null ? null : Number(it.largo),
               ancho: it.ancho === null ? null : Number(it.ancho),
               figura: it.figura,
+              imagen: it.imagen,
               precio: Number(it.precio),
               cantidad: it.cantidad,
               descuentoPct: Number(it.descuentoPct),

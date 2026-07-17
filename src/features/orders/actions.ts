@@ -16,6 +16,7 @@ import {
   medidasToString,
   sumTotals,
 } from "@/features/quotes/line-items";
+import { esItemEspecial } from "@/features/quotes/types";
 import { buildOrderEmail } from "./order-email";
 import type { ActionResult } from "@/features/config/actions";
 import { ORDER_ESTADOS, APPROVAL_KINDS } from "./types";
@@ -165,6 +166,15 @@ export async function generateOrderFromQuote(
   const productos = q.items.filter((it) => it.tipo === "PRODUCTO");
   if (productos.length === 0) {
     return { ok: false, error: "La cotización no tiene ítems." };
+  }
+  // Los ítems ESPECIALES no existen como producto (los resuelve diseño): no se
+  // puede generar el pedido hasta reemplazarlos por una referencia real.
+  const especiales = productos.filter((it) => esItemEspecial(it.referencia));
+  if (especiales.length > 0) {
+    return {
+      ok: false,
+      error: `No se puede generar el pedido: ${especiales.length} ítem(s) ESPECIAL pendientes de diseño. Reemplázalos por la referencia definitiva.`,
+    };
   }
   // Los acabados (Formica/Canto/Herraje) deben estar definidos: no se genera el
   // pedido si algún ítem sigue "POR DEFINIR" (pendiente de diseño/planos).

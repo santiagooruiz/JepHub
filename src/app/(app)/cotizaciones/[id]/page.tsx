@@ -10,7 +10,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { clientDisplayName } from "@/features/clients/queries";
 import { LineItemsTable } from "@/features/quotes/line-items-table";
-import { quoteEstadoVariant, formatMoney } from "@/features/quotes/types";
+import {
+  quoteEstadoVariant,
+  formatMoney,
+  esItemEspecial,
+} from "@/features/quotes/types";
 import { QuoteStateSelect } from "@/features/quotes/state-select";
 import { SignaturePanel } from "@/features/quotes/signature-panel";
 import { GenerateOrderButton } from "@/features/orders/order-controls";
@@ -73,19 +77,22 @@ export default async function CotizacionDetallePage({
   const porDefinir = productos.filter((it) =>
     it.acabados?.toUpperCase().includes("POR DEFINIR")
   );
+  const especiales = productos.filter((it) => esItemEspecial(it.referencia));
   const sinReferencia = productos.filter((it) => !it.referencia?.trim());
   // Motivo por el que aún no se puede generar el pedido (validaciones previas).
   // La guardia autoritativa está en generateOrderFromQuote (server action).
   const motivoBloqueo: string | null =
     productos.length === 0
       ? "La cotización no tiene ítems."
-      : porDefinir.length > 0
-        ? "Define los acabados de los ítems “POR DEFINIR” antes de generar el pedido."
-        : !q.client.numeroDocumento?.trim()
-          ? "El cliente no tiene número de documento (NIT), requerido para generar el pedido."
-          : sinReferencia.length > 0
-            ? `Hay ${sinReferencia.length} ítem(es) sin referencia (código). Complétalos antes de generar el pedido.`
-            : null;
+      : especiales.length > 0
+        ? `Hay ${especiales.length} ítem(s) ESPECIAL pendientes de diseño. Reemplázalos por la referencia definitiva antes de generar el pedido.`
+        : porDefinir.length > 0
+          ? "Define los acabados de los ítems “POR DEFINIR” antes de generar el pedido."
+          : !q.client.numeroDocumento?.trim()
+            ? "El cliente no tiene número de documento (NIT), requerido para generar el pedido."
+            : sinReferencia.length > 0
+              ? `Hay ${sinReferencia.length} ítem(es) sin referencia (código). Complétalos antes de generar el pedido.`
+              : null;
 
   const [activities, param] = await Promise.all([
     db.activity.findMany({
@@ -194,6 +201,7 @@ export default async function CotizacionDetallePage({
               largo: it.largo === null ? null : Number(it.largo),
               ancho: it.ancho === null ? null : Number(it.ancho),
               figura: it.figura,
+              imagen: it.imagen,
               precio: Number(it.precio),
               cantidad: it.cantidad,
               descuentoPct: Number(it.descuentoPct),

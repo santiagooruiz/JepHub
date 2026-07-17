@@ -2,7 +2,16 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { ChevronRight, Layers, Minus, Plus, Trash2 } from "lucide-react";
+import {
+  ChevronRight,
+  Layers,
+  Loader2,
+  Minus,
+  Paperclip,
+  Plus,
+  Trash2,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -16,7 +25,13 @@ import {
   getOpcionesAcabado,
   type QuoteClientInfo,
 } from "./actions";
-import { QUOTE_ESTADOS, IVA_RATE, formatMoney } from "./types";
+import {
+  QUOTE_ESTADOS,
+  IVA_RATE,
+  CODIGO_ESPECIAL,
+  esItemEspecial,
+  formatMoney,
+} from "./types";
 import {
   acabadosToString,
   medidasToString,
@@ -48,6 +63,8 @@ type Item = {
   largo: number | null;
   ancho: number | null;
   figura: boolean;
+  /** Archivo adjunto de la línea (URL /api/files/…; lo usa el ESPECIAL). */
+  imagen: string | null;
 };
 
 export type QuoteEditing = {
@@ -77,11 +94,15 @@ export type QuoteEditing = {
     largo: number | null;
     ancho: number | null;
     figura: boolean;
+    imagen: string | null;
   }[];
 };
 
 const selectCls =
   "h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring";
+
+/** Valor sintético del select de producto para el ítem ESPECIAL. */
+const ESPECIAL_VALUE = "__especial__";
 
 let counter = 0;
 const newKey = () => `it-${counter++}`;
@@ -103,6 +124,7 @@ function emptyItem(parentKey: string | null = null): Item {
     largo: null,
     ancho: null,
     figura: false,
+    imagen: null,
   };
 }
 
@@ -140,6 +162,7 @@ function initItems(editingItems: QuoteEditing["items"]): Item[] {
       largo: it.largo,
       ancho: it.ancho,
       figura: it.figura,
+      imagen: it.imagen,
     };
   });
 }
@@ -294,9 +317,28 @@ export function QuoteBuilder({
     });
   }
   function pickProduct(key: string, productId: string) {
+    // Ítem ESPECIAL: sin precio ni acabados; solo cantidad, descripción y
+    // archivo. Al guardar, la cotización entra al Backlog Diseño.
+    if (productId === ESPECIAL_VALUE) {
+      setItem(key, {
+        productId: null,
+        referencia: CODIGO_ESPECIAL,
+        descripcion: "",
+        precio: 0,
+        descuentoPct: 0,
+        acabados: "",
+        acabadosSel: [],
+        esArea: false,
+        largo: null,
+        ancho: null,
+        figura: false,
+        imagen: null,
+      });
+      return;
+    }
     const p = options.products.find((x) => x.id === productId);
     if (!p) {
-      setItem(key, { productId: null, acabadosSel: null });
+      setItem(key, { productId: null, referencia: "", acabadosSel: null, imagen: null });
       return;
     }
     setItem(key, {
@@ -310,8 +352,43 @@ export function QuoteBuilder({
       largo: null,
       ancho: null,
       figura: false,
+      imagen: null,
     });
     void cargarAcabados(key, p.codigo);
+  }
+
+  // Subida del archivo del ítem ESPECIAL (multipart a /api/files, anclado al
+  // cliente de la cotización; la URL queda en la línea).
+  const [subiendoArchivo, setSubiendoArchivo] = React.useState<string | null>(null);
+
+  async function subirArchivoEspecial(key: string, file: File, descripcion: string) {
+    if (!h.clientId) {
+      toast.error("Selecciona primero el cliente para adjuntar el archivo.");
+      return;
+    }
+    setSubiendoArchivo(key);
+    try {
+      const fd = new FormData();
+      fd.set("file", file);
+      fd.set("clientId", h.clientId);
+      fd.set("tipoArchivo", "Ítem ESPECIAL");
+      fd.set("observaciones", descripcion || "Ítem especial de cotización");
+      const res = await fetch("/api/files", { method: "POST", body: fd });
+      const data = (await res.json()) as {
+        error?: string;
+        attachment?: { url: string };
+      };
+      if (!res.ok || !data.attachment) {
+        toast.error(data.error ?? "No se pudo subir el archivo.");
+        return;
+      }
+      setItem(key, { imagen: data.attachment.url });
+      toast.success("Archivo adjuntado al ítem");
+    } catch {
+      toast.error("No se pudo subir el archivo.");
+    } finally {
+      setSubiendoArchivo(null);
+    }
   }
 
   /** Consulta la ficha ERP del producto: acabados (selects) y si es de área. */
@@ -338,32 +415,81 @@ export function QuoteBuilder({
     res.acabados.forEach((a) => ensureOpciones(a.codigo));
   }
 
+  /** Aplica (o limpia, con "") la opción de un acabado sobre las selecciones. */
+  function conOpcion(
+    sel: AcabadoSel[],
+    codigoAcabado: string,
+    valor: string
+  ): AcabadoSel[] {
+    return sel.map((a) => {
+      if (a.codigo !== codigoAcabado) return a;
+      if (!valor) {
+        return { ...a, opcionCodigo: null, opcionNombre: null, opcionColor: null };
+      }
+      const op = (opcionesAcabado[codigoAcabado] ?? []).find(
+        (o) => o.codigo === valor
+      );
+      return {
+        ...a,
+        opcionCodigo: valor,
+        opcionNombre: op?.nombre ?? null,
+        opcionColor: op?.color ?? null,
+      };
+    });
+  }
+
   /** Fija (o limpia, con "") la opción elegida de un acabado del producto. */
   function setAcabadoOpcion(key: string, codigoAcabado: string, valor: string) {
     setItems((prev) =>
-      prev.map((i) => {
-        if (i.key !== key || !i.acabadosSel) return i;
-        return {
-          ...i,
-          acabadosSel: i.acabadosSel.map((a) => {
-            if (a.codigo !== codigoAcabado) return a;
-            if (!valor) {
-              return { ...a, opcionCodigo: null, opcionNombre: null, opcionColor: null };
-            }
-            const op = (opcionesAcabado[codigoAcabado] ?? []).find(
-              (o) => o.codigo === valor
-            );
-            return {
-              ...a,
-              opcionCodigo: valor,
-              opcionNombre: op?.nombre ?? null,
-              opcionColor: op?.color ?? null,
-            };
-          }),
-        };
-      })
+      prev.map((i) =>
+        i.key === key && i.acabadosSel
+          ? { ...i, acabadosSel: conOpcion(i.acabadosSel, codigoAcabado, valor) }
+          : i
+      )
     );
   }
+
+  /** Fija la misma opción en TODOS los productos que llevan ese acabado. */
+  function setAcabadoGlobal(codigoAcabado: string, valor: string) {
+    setItems((prev) =>
+      prev.map((i) =>
+        i.acabadosSel && i.acabadosSel.some((a) => a.codigo === codigoAcabado)
+          ? { ...i, acabadosSel: conOpcion(i.acabadosSel, codigoAcabado, valor) }
+          : i
+      )
+    );
+  }
+
+  // Familias de acabado presentes en 2+ productos: el panel "Acabados globales"
+  // permite elegir una opción una sola vez y aplicarla a todos ellos.
+  type FamiliaGlobal = {
+    codigo: string;
+    nombre: string;
+    productos: number;
+    /** Opción elegida en cada producto (null = POR DEFINIR). */
+    valores: (string | null)[];
+    /** Alguna selección con opción, para mostrarla si el catálogo no cargó. */
+    fallback: AcabadoSel | null;
+  };
+  const familiasGlobales = React.useMemo<FamiliaGlobal[]>(() => {
+    const map = new Map<string, FamiliaGlobal>();
+    for (const it of items) {
+      if (it.tipo !== "PRODUCTO" || !it.acabadosSel) continue;
+      for (const a of it.acabadosSel) {
+        let f = map.get(a.codigo);
+        if (!f) {
+          f = { codigo: a.codigo, nombre: a.nombre, productos: 0, valores: [], fallback: null };
+          map.set(a.codigo, f);
+        }
+        f.productos += 1;
+        f.valores.push(a.opcionCodigo);
+        if (a.opcionCodigo && !f.fallback) f.fallback = a;
+      }
+    }
+    return [...map.values()]
+      .filter((f) => f.productos >= 2)
+      .sort((a, b) => a.codigo.localeCompare(b.codigo));
+  }, [items]);
 
   const rows = items.map((it) => {
     const precioConDesc = it.precio * (1 - it.descuentoPct / 100);
@@ -389,6 +515,7 @@ export function QuoteBuilder({
       productId: it.productId,
       referencia: it.referencia,
       descripcion: it.descripcion,
+      imagen: it.imagen,
       acabados: it.acabados,
       acabadosSel: it.acabadosSel,
       esArea: it.esArea,
@@ -552,10 +679,11 @@ export function QuoteBuilder({
 
   /**
    * Sub-fila de detalles del producto: un select buscable por cada acabado
-   * (ERP) y, si es producto de área, largo/ancho + checkbox de figura.
+   * (ERP), largo/ancho + figura si es de área, y el archivo del ESPECIAL.
    */
   function renderAcabadosRow(r: Row, esHijo: boolean) {
-    if (!r.acabadosSel?.length && !r.esArea) return null;
+    const esEspecial = esItemEspecial(r.referencia);
+    if (!r.acabadosSel?.length && !r.esArea && !esEspecial) return null;
     return (
       <tr className="border-b last:border-0 bg-muted/10">
         <td colSpan={7} className={`px-2 pt-1 pb-2 ${esHijo ? "pl-14" : "pl-8"}`}>
@@ -629,6 +757,49 @@ export function QuoteBuilder({
                 </label>
               </>
             )}
+            {esEspecial && (
+              <div className="min-w-64 space-y-0.5">
+                <label className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+                  Archivo (opcional)
+                </label>
+                {r.imagen ? (
+                  <div className="flex h-9 items-center gap-2 text-sm">
+                    <a
+                      href={r.imagen}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1.5 text-primary underline-offset-4 hover:underline"
+                    >
+                      <Paperclip className="size-4" /> Ver archivo
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => setItem(r.key, { imagen: null })}
+                      className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted"
+                      aria-label="Quitar archivo del ítem"
+                      title="Quitar archivo del ítem"
+                    >
+                      <X className="size-4" />
+                    </button>
+                  </div>
+                ) : subiendoArchivo === r.key ? (
+                  <div className="flex h-9 items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="size-4 animate-spin" /> Subiendo…
+                  </div>
+                ) : (
+                  <input
+                    type="file"
+                    aria-label="Archivo del ítem especial"
+                    className="h-9 w-full cursor-pointer rounded-md border border-input bg-background px-3 py-1.5 text-sm text-muted-foreground file:mr-3 file:rounded file:border-0 file:bg-muted file:px-2 file:py-0.5 file:text-xs file:font-medium file:text-foreground"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) void subirArchivoEspecial(r.key, f, r.descripcion);
+                      e.target.value = "";
+                    }}
+                  />
+                )}
+              </div>
+            )}
           </div>
         </td>
       </tr>
@@ -636,7 +807,8 @@ export function QuoteBuilder({
   }
 
   function renderProductoRow(r: Row, esHijo: boolean) {
-    const tieneDetalles = Boolean(r.acabadosSel?.length || r.esArea);
+    const esEspecial = esItemEspecial(r.referencia);
+    const tieneDetalles = Boolean(r.acabadosSel?.length || r.esArea || esEspecial);
     const oculto = detallesOcultos.has(r.key);
     const acabadosRow =
       tieneDetalles && !oculto ? renderAcabadosRow(r, esHijo) : null;
@@ -660,12 +832,15 @@ export function QuoteBuilder({
       <tr className={`${acabadosRow ? "" : "border-b last:border-0"} align-top`}>
         <td className={`px-2 py-2 min-w-40 ${esHijo ? "pl-8" : ""}`}>
           <SearchableSelect
-            value={r.productId ?? ""}
+            value={esEspecial ? ESPECIAL_VALUE : (r.productId ?? "")}
             onChange={(v) => pickProduct(r.key, v)}
-            options={options.products.map((p) => ({
-              value: p.id,
-              label: p.codigo,
-            }))}
+            options={[
+              { value: ESPECIAL_VALUE, label: CODIGO_ESPECIAL },
+              ...options.products.map((p) => ({
+                value: p.id,
+                label: p.codigo,
+              })),
+            ]}
             placeholder="— libre —"
             aria-label="Producto"
           />
@@ -674,7 +849,7 @@ export function QuoteBuilder({
           <Input
             value={r.descripcion}
             onChange={(e) => setItem(r.key, { descripcion: e.target.value })}
-            placeholder="Descripción"
+            placeholder={esEspecial ? "Descripción del especial" : "Descripción"}
           />
           {r.acabados && !r.acabadosSel && (
             <span className="text-xs text-muted-foreground">{r.acabados}</span>
@@ -688,6 +863,8 @@ export function QuoteBuilder({
             type="number"
             className="w-28 text-right"
             value={r.precio}
+            disabled={esEspecial}
+            title={esEspecial ? "El ESPECIAL no tiene precio: lo define diseño" : undefined}
             onChange={(e) => setItem(r.key, { precio: Number(e.target.value) || 0 })}
           />
         </td>
@@ -704,6 +881,7 @@ export function QuoteBuilder({
             type="number"
             className="w-16 text-right"
             value={r.descuentoPct}
+            disabled={esEspecial}
             onChange={(e) => setItem(r.key, { descuentoPct: Number(e.target.value) || 0 })}
           />
         </td>
@@ -863,6 +1041,52 @@ export function QuoteBuilder({
             </Button>
           </div>
         </div>
+
+        {/* Acabados globales: misma opción para todos los productos que
+            comparten la familia (solo aparece con 2+ productos que la llevan). */}
+        {familiasGlobales.length > 0 && (
+          <div className="mb-3 rounded-lg border bg-muted/20 p-3">
+            <p className="mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
+              Acabados globales
+            </p>
+            <div className="flex flex-wrap items-end gap-x-4 gap-y-2">
+              {familiasGlobales.map((f) => {
+                const distintos = new Set(f.valores);
+                const comun = distintos.size === 1 ? [...distintos][0] : null;
+                return (
+                  <div key={f.codigo} className="w-72 space-y-0.5">
+                    <label className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+                      {f.nombre} · {f.productos} productos
+                    </label>
+                    <SearchableSelect
+                      value={comun ?? ""}
+                      onChange={(v) => setAcabadoGlobal(f.codigo, v)}
+                      options={(
+                        opcionesAcabado[f.codigo] ??
+                        (f.fallback?.opcionCodigo
+                          ? [
+                              {
+                                codigo: f.fallback.opcionCodigo,
+                                nombre: f.fallback.opcionNombre,
+                                color: f.fallback.opcionColor,
+                              },
+                            ]
+                          : [])
+                      ).map(opcionToOption)}
+                      placeholder={distintos.size > 1 ? "(varios)" : "POR DEFINIR"}
+                      searchPlaceholder="Buscar material o color…"
+                      aria-label={`Acabado global ${f.nombre}`}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">
+              La opción elegida aquí se aplica a todos los productos que llevan
+              ese acabado; luego puedes ajustar un producto puntual en su fila.
+            </p>
+          </div>
+        )}
         <div className="overflow-x-auto">
           <table className="w-full border-collapse text-sm">
             <thead>

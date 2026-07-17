@@ -18,7 +18,8 @@ import {
 import type { ActionResult } from "@/features/config/actions";
 import { logAutoActivity } from "@/features/activity/log";
 import { clientDisplayName } from "@/features/clients/queries";
-import { QUOTE_ESTADOS, IVA_RATE } from "./types";
+import { ensureEspecialDesignRequest } from "@/features/design/auto";
+import { QUOTE_ESTADOS, IVA_RATE, esItemEspecial } from "./types";
 import {
   acabadosToString,
   cloneLineItemRows,
@@ -97,6 +98,8 @@ const productoSchema = z.object({
   productId: nullableStr,
   referencia: nullableStr,
   descripcion: nullableStr,
+  /** Archivo adjunto de la línea (URL /api/files/…; hoy lo usa el ESPECIAL). */
+  imagen: nullableStr,
   acabados: nullableStr,
   // Selecciones estructuradas de acabados (ERP). null/ausente = sin datos del
   // ERP (se conserva el texto libre de `acabados`); [] = producto sin acabados.
@@ -153,7 +156,12 @@ const schema = z.object({
 type ProductoInput = z.infer<typeof productoSchema>;
 
 function productoRow(it: ProductoInput) {
-  const precioConDesc = it.precio * (1 - it.descuentoPct / 100);
+  // El ítem ESPECIAL no tiene precio (queda pendiente de diseño): se fuerza
+  // 0 en servidor aunque el payload traiga otro valor.
+  const especial = esItemEspecial(it.referencia);
+  const precio = especial ? 0 : it.precio;
+  const descuentoPct = especial ? 0 : it.descuentoPct;
+  const precioConDesc = precio * (1 - descuentoPct / 100);
   // Con selecciones del ERP el string `acabados` se deriva (un acabado sin
   // opción queda "POR DEFINIR"); sin ellas se respeta el texto recibido.
   const sel = it.acabadosSel ?? null;
@@ -166,6 +174,7 @@ function productoRow(it: ProductoInput) {
     productId: it.productId,
     referencia: it.referencia,
     descripcion: it.descripcion,
+    imagen: it.imagen,
     acabados,
     acabadosJson: sel ?? undefined,
     // Las medidas solo aplican a productos de área.
@@ -174,9 +183,9 @@ function productoRow(it: ProductoInput) {
     ancho: it.esArea ? (it.ancho ?? null) : null,
     figura: it.esArea ? it.figura : false,
     observacionesInternas: it.observacionesInternas,
-    precio: it.precio,
+    precio,
     cantidad: it.cantidad,
-    descuentoPct: it.descuentoPct,
+    descuentoPct,
     precioConDesc,
     total: precioConDesc * it.cantidad,
   };
@@ -331,6 +340,7 @@ export async function saveQuote(input: unknown): Promise<SaveResult> {
   };
 
   let quoteId: string;
+  let quoteNumero = 0;
   if (d.id) {
     const existing = await db.quote.findFirst({
       where: { id: d.id, companyId: user.companyId },
@@ -346,6 +356,7 @@ export async function saveQuote(input: unknown): Promise<SaveResult> {
       );
     });
     quoteId = d.id;
+    quoteNumero = existing.numero;
     await logAutoActivity({
       companyId: user.companyId,
       userId: user.id,
@@ -377,6 +388,7 @@ export async function saveQuote(input: unknown): Promise<SaveResult> {
       return q;
     });
     quoteId = created.id;
+    quoteNumero = created.numero;
     await logAutoActivity({
       companyId: user.companyId,
       userId: user.id,
@@ -400,6 +412,25 @@ export async function saveQuote(input: unknown): Promise<SaveResult> {
       });
       revalidatePath(`/oportunidades/${d.opportunityId}`);
     }
+  }
+
+  // Ítems ESPECIALES → asegura la solicitud en Backlog Diseño (idempotente)
+  // y notifica a los diseñadores para que la revisen.
+  const especiales = rows.filter((r) => esItemEspecial(r.referencia ?? null));
+  if (especiales.length) {
+    await ensureEspecialDesignRequest({
+      companyId: user.companyId,
+      userId: user.id,
+      quoteId,
+      quoteNumero,
+      clientId: d.clientId,
+      especiales: especiales.map((r) => ({
+        descripcion: r.descripcion ?? null,
+        cantidad: r.cantidad ?? 1,
+        imagen: r.imagen ?? null,
+      })),
+    });
+    revalidatePath("/backlog");
   }
 
   revalidatePath("/cotizaciones");
@@ -471,6 +502,26 @@ export async function duplicateQuote(id: string): Promise<SaveResult> {
     opportunityId: source.opportunityId,
     quoteId: created.id,
   });
+
+  // El duplicado también arrastra ítems ESPECIALES → solicitud de diseño.
+  const especialesDup = source.items.filter(
+    (it) => it.tipo === "PRODUCTO" && esItemEspecial(it.referencia)
+  );
+  if (especialesDup.length) {
+    await ensureEspecialDesignRequest({
+      companyId: user.companyId,
+      userId: user.id,
+      quoteId: created.id,
+      quoteNumero: created.numero,
+      clientId: source.clientId,
+      especiales: especialesDup.map((it) => ({
+        descripcion: it.descripcion,
+        cantidad: it.cantidad,
+        imagen: it.imagen,
+      })),
+    });
+    revalidatePath("/backlog");
+  }
 
   revalidatePath("/cotizaciones");
   if (source.opportunityId) revalidatePath(`/oportunidades/${source.opportunityId}`);

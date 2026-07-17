@@ -5,7 +5,7 @@
 // para ver los productos internos; los separadores son filas de solo texto.
 
 import * as React from "react";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Paperclip } from "lucide-react";
 
 import { groupLineItems, medidasToString } from "./line-items";
 import { formatMoney } from "./types";
@@ -21,6 +21,8 @@ export type LineItemRowData = {
   largo: number | null;
   ancho: number | null;
   figura: boolean;
+  /** Archivo adjunto de la línea (URL; lo usa el ítem ESPECIAL). */
+  imagen: string | null;
   precio: number;
   cantidad: number;
   descuentoPct: number;
@@ -63,6 +65,16 @@ export function LineItemsTable({
           )}
           {medidas && (
             <div className="text-xs text-muted-foreground">{medidas}</div>
+          )}
+          {it.imagen && (
+            <a
+              href={it.imagen}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 text-xs text-primary underline-offset-4 hover:underline"
+            >
+              <Paperclip className="size-3.5" /> Archivo adjunto
+            </a>
           )}
         </td>
         <td className="px-3 py-2 text-right tabular whitespace-nowrap">
