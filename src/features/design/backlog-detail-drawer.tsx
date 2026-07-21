@@ -164,6 +164,7 @@ export async function BacklogDetailDrawer({
             tipoArchivo: f.tipoArchivo,
             observaciones: f.observaciones,
             url: f.url,
+            nombre: f.nombre,
             createdAt: dateTime(f.createdAt),
             estado: f.estado,
             aprobadoPor: f.aprobadoPor,

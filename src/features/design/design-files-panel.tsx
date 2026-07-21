@@ -28,6 +28,8 @@ export type DesignFileItem = {
   tipoArchivo: string | null;
   observaciones: string | null;
   url: string;
+  /** Nombre original del archivo (solo en subidas binarias vía MinIO). */
+  nombre?: string | null;
   createdAt: string;
   // Aprobación de ficha técnica y borrado suave
   estado: string | null; // APROBADA | RECHAZADA
@@ -37,7 +39,8 @@ export type DesignFileItem = {
   borrado: boolean;
 };
 
-const fileName = (url: string) => url.split("/").pop() || url;
+const fileName = (f: Pick<DesignFileItem, "url" | "nombre">) =>
+  f.nombre || f.url.split("/").pop() || f.url;
 
 /**
  * Tab "Archivos" del backlog: checklist de categorías fijas (Ficha Comercial,
@@ -165,7 +168,7 @@ export function DesignFilesPanel({
                 f.borrado && "line-through"
               )}
             >
-              <span className="truncate">{fileName(f.url)}</span>
+              <span className="truncate">{fileName(f)}</span>
               <ExternalLink className="size-3.5 shrink-0" />
             </a>
             {f.borrado && (
@@ -211,7 +214,7 @@ export function DesignFilesPanel({
                   onClick={() => remove(f.id)}
                   disabled={pending}
                   className="inline-flex size-6 items-center justify-center rounded-full text-muted-foreground hover:bg-destructive/10 hover:text-[hsl(var(--destructive))]"
-                  aria-label={`Eliminar ${fileName(f.url)}`}
+                  aria-label={`Eliminar ${fileName(f)}`}
                 >
                   <X className="size-3.5" />
                 </button>
