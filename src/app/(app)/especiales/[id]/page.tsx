@@ -4,6 +4,7 @@ import { ChevronLeft } from "lucide-react";
 
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/guard";
+import { isStorageConfigured } from "@/lib/storage";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { TabsLite } from "@/components/ui/tabs-lite";
@@ -71,6 +72,7 @@ export default async function EspecialDetallePage({
         <SpecialFilesPanel
           specialDesignId={s.id}
           canEdit={canEdit}
+          canUpload={isStorageConfigured()}
           files={files.map((f) => ({
             id: f.id,
             tipoArchivo: f.tipoArchivo,

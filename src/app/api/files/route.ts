@@ -10,14 +10,16 @@ import {
   putFile,
   sanitizeFileName,
 } from "@/lib/storage";
+import { applyDesignFileEffects } from "@/features/design/file-effects";
+import { DESIGN_FILE_CATEGORIES } from "@/features/design/types";
 
 export const runtime = "nodejs";
 
 /**
  * Subida binaria de adjuntos (multipart/form-data).
- * Campos: `file` + exactamente uno de `clientId` | `opportunityId`,
- * opcionales `tipoArchivo` y `observaciones`.
- * Guarda el binario en MinIO y crea el registro `Attachment`.
+ * Campos: `file` + exactamente uno de `clientId` | `opportunityId` |
+ * `designRequestId` | `specialDesignId`, opcionales `tipoArchivo` y
+ * `observaciones`. Guarda el binario en MinIO y crea el registro `Attachment`.
  */
 export async function POST(req: Request) {
   const user = await getCurrentUser();
@@ -57,14 +59,20 @@ export async function POST(req: Request) {
 
   const clientId = (form.get("clientId") as string | null) || null;
   const opportunityId = (form.get("opportunityId") as string | null) || null;
+  const designRequestId = (form.get("designRequestId") as string | null) || null;
+  const specialDesignId = (form.get("specialDesignId") as string | null) || null;
   const tipoArchivo = (form.get("tipoArchivo") as string | null)?.trim() || null;
   const observaciones = (form.get("observaciones") as string | null)?.trim() || null;
 
-  // Misma regla que saveAttachment: exactamente una entidad, del tenant del usuario.
-  if (Boolean(clientId) === Boolean(opportunityId)) {
+  // Exactamente una entidad ancla, del tenant del usuario.
+  const refs = [clientId, opportunityId, designRequestId, specialDesignId].filter(Boolean);
+  if (refs.length !== 1) {
     return NextResponse.json({ error: "Entidad requerida." }, { status: 400 });
   }
+
+  let entityType: "CLIENT" | "OPPORTUNITY" | "DESIGN" | "SPECIAL";
   if (clientId) {
+    entityType = "CLIENT";
     const client = await db.client.findFirst({
       where: { id: clientId, companyId: user.companyId },
       select: { id: true },
@@ -72,18 +80,45 @@ export async function POST(req: Request) {
     if (!client) {
       return NextResponse.json({ error: "Cliente no encontrado." }, { status: 404 });
     }
-  } else {
+  } else if (opportunityId) {
+    entityType = "OPPORTUNITY";
     const opp = await db.opportunity.findFirst({
-      where: { id: opportunityId as string, companyId: user.companyId },
+      where: { id: opportunityId, companyId: user.companyId },
       select: { id: true },
     });
     if (!opp) {
       return NextResponse.json({ error: "Oportunidad no encontrada." }, { status: 404 });
     }
+  } else if (designRequestId) {
+    entityType = "DESIGN";
+    if (!user.ability.can("edit", "backlog_design")) {
+      return NextResponse.json({ error: "No autorizado." }, { status: 403 });
+    }
+    if (tipoArchivo && !(DESIGN_FILE_CATEGORIES as readonly string[]).includes(tipoArchivo)) {
+      return NextResponse.json({ error: "Categoría de archivo inválida." }, { status: 400 });
+    }
+    const dr = await db.designRequest.findFirst({
+      where: { id: designRequestId, companyId: user.companyId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!dr) {
+      return NextResponse.json({ error: "Solicitud de diseño no encontrada." }, { status: 404 });
+    }
+  } else {
+    entityType = "SPECIAL";
+    if (!user.ability.can("edit", "special_designs")) {
+      return NextResponse.json({ error: "No autorizado." }, { status: 403 });
+    }
+    const special = await db.specialDesign.findFirst({
+      where: { id: specialDesignId as string, companyId: user.companyId },
+      select: { id: true },
+    });
+    if (!special) {
+      return NextResponse.json({ error: "Diseño especial no encontrado." }, { status: 404 });
+    }
   }
 
   const id = randomUUID();
-  const entityType = clientId ? "CLIENT" : "OPPORTUNITY";
   const storageKey = `${user.companyId}/${entityType.toLowerCase()}/${id}/${sanitizeFileName(file.name)}`;
 
   try {
@@ -107,6 +142,8 @@ export async function POST(req: Request) {
       entityType,
       clientId,
       opportunityId,
+      designRequestId,
+      specialDesignId,
       tipoArchivo,
       observaciones,
       url: `/api/files/${id}`,
@@ -117,6 +154,19 @@ export async function POST(req: Request) {
     },
     select: { id: true, url: true },
   });
+
+  // Mismos efectos (histórico, marcar entregable, notificar al solicitante)
+  // que el registro manual de URL en el Backlog Diseño.
+  if (entityType === "DESIGN" && designRequestId && tipoArchivo) {
+    await applyDesignFileEffects(
+      user.companyId,
+      user.id,
+      user.name,
+      designRequestId,
+      tipoArchivo,
+      attachment.url
+    );
+  }
 
   return NextResponse.json({ ok: true, attachment });
 }

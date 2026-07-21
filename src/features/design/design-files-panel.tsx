@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Check, ExternalLink, Plus, ThumbsDown, ThumbsUp, X } from "lucide-react";
+import { Check, ExternalLink, Loader2, Plus, ThumbsDown, ThumbsUp, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -48,40 +48,79 @@ export function DesignFilesPanel({
   designRequestId,
   files,
   canEdit,
+  /** false cuando el storage (MinIO) no está configurado: solo registro de URL. */
+  canUpload = true,
 }: {
   designRequestId: string;
   files: DesignFileItem[];
   canEdit: boolean;
+  canUpload?: boolean;
 }) {
   const router = useRouter();
   const [adding, setAdding] = React.useState<string | null>(null);
   const [url, setUrl] = React.useState("");
   const [obs, setObs] = React.useState("");
+  const [file, setFile] = React.useState<File | null>(null);
+  const fileRef = React.useRef<HTMLInputElement>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [pending, start] = React.useTransition();
 
   const categorias = DESIGN_FILE_CATEGORIES as readonly string[];
   const otros = files.filter((f) => !categorias.includes(f.tipoArchivo ?? ""));
 
+  function resetForm() {
+    setUrl("");
+    setObs("");
+    setFile(null);
+    if (fileRef.current) fileRef.current.value = "";
+    setAdding(null);
+  }
+
   function submit(categoria: string) {
     setError(null);
+    if (!file && !url.trim()) {
+      setError("Selecciona un archivo o escribe una URL.");
+      return;
+    }
     start(async () => {
-      const res = await saveDesignFile({
-        designRequestId,
-        tipoArchivo: categoria,
-        observaciones: obs,
-        url,
-      });
-      if (res.ok) {
-        toast.success("Archivo registrado");
-        setUrl("");
-        setObs("");
-        setAdding(null);
-        router.refresh();
+      if (file) {
+        // Subida binaria vía /api/files (multipart).
+        const fd = new FormData();
+        fd.set("file", file);
+        fd.set("designRequestId", designRequestId);
+        fd.set("tipoArchivo", categoria);
+        fd.set("observaciones", obs);
+        try {
+          const res = await fetch("/api/files", { method: "POST", body: fd });
+          const data = (await res.json()) as { error?: string };
+          if (!res.ok) {
+            const msg = data.error ?? "No se pudo subir el archivo.";
+            setError(msg);
+            toast.error(msg);
+            return;
+          }
+        } catch {
+          setError("No se pudo subir el archivo.");
+          toast.error("No se pudo subir el archivo.");
+          return;
+        }
+        toast.success("Archivo subido");
       } else {
-        setError(res.error);
-        toast.error(res.error);
+        const res = await saveDesignFile({
+          designRequestId,
+          tipoArchivo: categoria,
+          observaciones: obs,
+          url,
+        });
+        if (!res.ok) {
+          setError(res.error);
+          toast.error(res.error);
+          return;
+        }
+        toast.success("Archivo registrado");
       }
+      resetForm();
+      router.refresh();
     });
   }
 
@@ -247,6 +286,8 @@ export function DesignFilesPanel({
                 setAdding(nombre);
                 setUrl("");
                 setObs("");
+                setFile(null);
+                if (fileRef.current) fileRef.current.value = "";
                 setError(null);
               }}
               className="ml-auto inline-flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-accent"
@@ -269,10 +310,21 @@ export function DesignFilesPanel({
             }}
             className="space-y-2"
           >
+            {canUpload && (
+              <input
+                ref={fileRef}
+                type="file"
+                aria-label="Archivo"
+                autoFocus
+                className="h-9 w-full cursor-pointer rounded-md border border-input bg-background px-3 py-1.5 text-sm text-muted-foreground file:mr-3 file:rounded file:border-0 file:bg-muted file:px-2 file:py-0.5 file:text-xs file:font-medium file:text-foreground"
+                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              />
+            )}
             <Input
-              autoFocus
-              placeholder="URL o nombre del archivo"
+              autoFocus={!canUpload}
+              placeholder={canUpload ? "…o pega la URL del archivo" : "URL o nombre del archivo"}
               value={url}
+              disabled={Boolean(file)}
               onChange={(e) => setUrl(e.target.value)}
             />
             <Input
@@ -281,7 +333,12 @@ export function DesignFilesPanel({
               onChange={(e) => setObs(e.target.value)}
             />
             <div className="flex items-center gap-2">
-              <Button type="submit" size="sm" disabled={pending || !url.trim()}>
+              <Button type="submit" size="sm" disabled={pending || (!file && !url.trim())}>
+                {pending ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : file ? (
+                  <Upload className="size-4" />
+                ) : null}
                 Guardar
               </Button>
               <Button
@@ -310,10 +367,12 @@ export function DesignFilesPanel({
         />
       ))}
       {otros.length > 0 && <Categoria nombre="Otros" items={otros} addable={false} />}
-      <p className="text-xs text-muted-foreground">
-        Nota: por ahora se registran metadatos/URL. La subida binaria a
-        almacenamiento (R2/MinIO) se habilita en fase de infraestructura.
-      </p>
+      {!canUpload && (
+        <p className="text-xs text-muted-foreground">
+          El almacenamiento de archivos no está configurado: por ahora solo se
+          puede registrar la URL del archivo.
+        </p>
+      )}
     </div>
   );
 }

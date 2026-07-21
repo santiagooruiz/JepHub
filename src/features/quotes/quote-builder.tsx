@@ -216,6 +216,25 @@ export function QuoteBuilder({
       return next;
     });
   }
+
+  // Descuento global (3+ productos): un solo % aplicado a todos los productos
+  // reales de la cotización. El ESPECIAL no tiene precio, así que se excluye.
+  const [descuentoGlobal, setDescuentoGlobal] = React.useState("");
+  const productosConDescuento = items.filter(
+    (i) => i.tipo === "PRODUCTO" && !esItemEspecial(i.referencia)
+  );
+
+  function aplicarDescuentoGlobal(valor: string) {
+    setDescuentoGlobal(valor);
+    const pct = Math.min(100, Math.max(0, Number(valor) || 0));
+    setItems((prev) =>
+      prev.map((i) =>
+        i.tipo === "PRODUCTO" && !esItemEspecial(i.referencia)
+          ? { ...i, descuentoPct: pct }
+          : i
+      )
+    );
+  }
   // Catálogo de opciones (materiales/colores) por código de acabado del ERP;
   // se carga perezosamente la primera vez que un producto usa esa familia.
   const [opcionesAcabado, setOpcionesAcabado] = React.useState<
@@ -1041,6 +1060,37 @@ export function QuoteBuilder({
             </Button>
           </div>
         </div>
+
+        {/* Descuento global: un solo % para todos los productos (a partir de
+            3 productos reales en la cotización). */}
+        {productosConDescuento.length > 2 && (
+          <div className="mb-3 rounded-lg border bg-muted/20 p-3">
+            <p className="mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
+              Descuento global
+            </p>
+            <div className="flex flex-wrap items-end gap-x-4 gap-y-2">
+              <div className="w-40 space-y-0.5">
+                <label className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+                  % para {productosConDescuento.length} productos
+                </label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={100}
+                  step="0.01"
+                  className="text-right"
+                  value={descuentoGlobal}
+                  onChange={(e) => aplicarDescuentoGlobal(e.target.value)}
+                  aria-label="Descuento global"
+                />
+              </div>
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Se aplica de una vez a todos los productos de la cotización;
+              luego puedes ajustar el descuento de un producto puntual en su fila.
+            </p>
+          </div>
+        )}
 
         {/* Acabados globales: misma opción para todos los productos que
             comparten la familia (solo aparece con 2+ productos que la llevan). */}

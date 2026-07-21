@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 
 import { requirePermission } from "@/lib/guard";
+import { isStorageConfigured } from "@/lib/storage";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -122,6 +123,7 @@ export default async function BacklogPage({
           selfHref={`${detailHrefBase}${sp.producto}`}
           tab={sp.tab}
           canEdit={canEdit}
+          canUpload={isStorageConfigured()}
         />
       )}
     </div>

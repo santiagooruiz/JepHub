@@ -36,6 +36,7 @@ export async function BacklogDetailDrawer({
   selfHref,
   tab,
   canEdit,
+  canUpload = true,
 }: {
   companyId: string;
   id: string;
@@ -45,6 +46,8 @@ export async function BacklogDetailDrawer({
   /** Tab inicial (info | archivos | mensajes | historico). */
   tab?: string;
   canEdit: boolean;
+  /** false cuando el storage (MinIO) no está configurado: solo registro de URL. */
+  canUpload?: boolean;
 }) {
   const dr = await getDesignRequestDetail(companyId, id);
   if (!dr) return null;
@@ -155,6 +158,7 @@ export async function BacklogDetailDrawer({
         <DesignFilesPanel
           designRequestId={dr.id}
           canEdit={canEdit}
+          canUpload={canUpload}
           files={dr.files.map((f) => ({
             id: f.id,
             tipoArchivo: f.tipoArchivo,

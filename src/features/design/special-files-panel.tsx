@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Trash2, Paperclip, ExternalLink } from "lucide-react";
+import { Trash2, Paperclip, ExternalLink, Loader2, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -22,38 +22,77 @@ export function SpecialFilesPanel({
   specialDesignId,
   files,
   canEdit,
+  /** false cuando el storage (MinIO) no está configurado: solo registro de URL. */
+  canUpload = true,
 }: {
   specialDesignId: string;
   files: SpecialFileItem[];
   canEdit: boolean;
+  canUpload?: boolean;
 }) {
   const router = useRouter();
+  const fileRef = React.useRef<HTMLInputElement>(null);
   const [tipo, setTipo] = React.useState("");
   const [obs, setObs] = React.useState("");
   const [url, setUrl] = React.useState("");
+  const [file, setFile] = React.useState<File | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [pending, start] = React.useTransition();
+
+  function reset() {
+    setTipo("");
+    setObs("");
+    setUrl("");
+    setFile(null);
+    if (fileRef.current) fileRef.current.value = "";
+  }
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    if (!file && !url.trim()) {
+      setError("Selecciona un archivo o escribe una URL.");
+      return;
+    }
     start(async () => {
-      const res = await saveSpecialFile({
-        specialDesignId,
-        tipoArchivo: tipo,
-        observaciones: obs,
-        url,
-      });
-      if (res.ok) {
-        toast.success("Archivo registrado");
-        setTipo("");
-        setObs("");
-        setUrl("");
-        router.refresh();
+      if (file) {
+        // Subida binaria vía /api/files (multipart).
+        const fd = new FormData();
+        fd.set("file", file);
+        fd.set("specialDesignId", specialDesignId);
+        fd.set("tipoArchivo", tipo);
+        fd.set("observaciones", obs);
+        try {
+          const res = await fetch("/api/files", { method: "POST", body: fd });
+          const data = (await res.json()) as { error?: string };
+          if (!res.ok) {
+            const msg = data.error ?? "No se pudo subir el archivo.";
+            setError(msg);
+            toast.error(msg);
+            return;
+          }
+        } catch {
+          setError("No se pudo subir el archivo.");
+          toast.error("No se pudo subir el archivo.");
+          return;
+        }
+        toast.success("Archivo subido");
       } else {
-        setError(res.error);
-        toast.error(res.error);
+        const res = await saveSpecialFile({
+          specialDesignId,
+          tipoArchivo: tipo,
+          observaciones: obs,
+          url,
+        });
+        if (!res.ok) {
+          setError(res.error);
+          toast.error(res.error);
+          return;
+        }
+        toast.success("Archivo registrado");
       }
+      reset();
+      router.refresh();
     });
   }
 
@@ -74,17 +113,33 @@ export function SpecialFilesPanel({
         <form onSubmit={submit} className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           <Input placeholder="Tipo (ej. Render 3D)" value={tipo} onChange={(e) => setTipo(e.target.value)} />
           <Input placeholder="Observaciones" value={obs} onChange={(e) => setObs(e.target.value)} />
+          {canUpload && (
+            <input
+              ref={fileRef}
+              type="file"
+              aria-label="Archivo"
+              className="sm:col-span-2 h-9 w-full cursor-pointer rounded-md border border-input bg-background px-3 py-1.5 text-sm text-muted-foreground file:mr-3 file:rounded file:border-0 file:bg-muted file:px-2 file:py-0.5 file:text-xs file:font-medium file:text-foreground"
+              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            />
+          )}
           <Input
             className="sm:col-span-2"
-            placeholder="URL o nombre del archivo *"
-            required
+            placeholder={canUpload ? "…o registra una URL" : "URL o nombre del archivo *"}
             value={url}
+            disabled={Boolean(file)}
             onChange={(e) => setUrl(e.target.value)}
           />
           {error && <p className="sm:col-span-2 text-sm text-[hsl(var(--destructive))]">{error}</p>}
           <div className="sm:col-span-2">
             <Button type="submit" size="sm" disabled={pending}>
-              <Paperclip className="size-4" /> Registrar archivo
+              {pending ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : file ? (
+                <Upload className="size-4" />
+              ) : (
+                <Paperclip className="size-4" />
+              )}
+              {file ? "Subir archivo" : "Registrar archivo"}
             </Button>
           </div>
         </form>
@@ -128,10 +183,12 @@ export function SpecialFilesPanel({
         {!files.length && <p className="text-sm text-muted-foreground">Sin archivos.</p>}
       </div>
 
-      <p className="text-xs text-muted-foreground">
-        Nota: por ahora se registran metadatos/URL. La subida binaria a almacenamiento
-        (R2/MinIO) se habilita en fase de infraestructura.
-      </p>
+      {!canUpload && (
+        <p className="text-xs text-muted-foreground">
+          El almacenamiento de archivos no está configurado: por ahora solo se
+          puede registrar la URL del archivo.
+        </p>
+      )}
     </div>
   );
 }

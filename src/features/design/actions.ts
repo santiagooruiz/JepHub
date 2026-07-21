@@ -21,6 +21,7 @@ import {
   designFileSchema,
   designPrecioSchema,
 } from "./schema";
+import { applyDesignFileEffects } from "./file-effects";
 
 /** Registra un evento automático en el histórico de una entidad de diseño. */
 async function logDesignActivity(
@@ -418,7 +419,7 @@ export async function saveDesignFile(input: unknown): Promise<ActionResult> {
   const { designRequestId, tipoArchivo, observaciones, url } = parsed.data;
   const dr = await db.designRequest.findFirst({
     where: { id: designRequestId, companyId: user.companyId, deletedAt: null },
-    select: { id: true, numero: true, requestedById: true, despiece: true, armadoGeneral: true, planosTecnicos: true },
+    select: { id: true },
   });
   if (!dr) return { ok: false, error: "No encontrado." };
 
@@ -433,36 +434,14 @@ export async function saveDesignFile(input: unknown): Promise<ActionResult> {
       url,
     },
   });
-  await logDesignActivity(
+  await applyDesignFileEffects(
     user.companyId,
     user.id,
-    "DESIGN",
+    user.name,
     designRequestId,
-    `Subió el archivo ${url} de tipo ${tipoArchivo}`
+    tipoArchivo,
+    url
   );
-
-  // Si la categoría es un entregable (Despiece / Armado / Planos), marca el
-  // campo correspondiente para que el ✓ del listado refleje el archivo y se
-  // notifique al solicitante, igual que al editar entregables a mano.
-  const field = DELIVERABLE_BY_CATEGORY[tipoArchivo];
-  if (field && !dr[field]) {
-    await db.designRequest.update({
-      where: { id: designRequestId },
-      data: { [field]: url },
-    });
-    if (dr.requestedById && dr.requestedById !== user.id) {
-      await db.notification.create({
-        data: {
-          companyId: user.companyId,
-          userId: dr.requestedById,
-          tipo: "diseño",
-          titulo: `Diseño N°${dr.numero}: entregables disponibles`,
-          cuerpo: `${user.name} subió ${tipoArchivo}.`,
-          href: `/backlog/${designRequestId}`,
-        },
-      });
-    }
-  }
 
   revalidatePath("/backlog");
   revalidatePath(`/backlog/${designRequestId}`);
