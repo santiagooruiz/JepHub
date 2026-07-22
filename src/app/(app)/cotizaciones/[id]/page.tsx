@@ -18,7 +18,7 @@ import {
 import { QuoteStateSelect } from "@/features/quotes/state-select";
 import { SignaturePanel } from "@/features/quotes/signature-panel";
 import { GenerateOrderButton } from "@/features/orders/order-controls";
-import { RequestDesignButton } from "@/features/design/request-design-button";
+import { DesignRequestsPanel } from "@/features/design/design-requests-panel";
 import { RegisterActivity } from "@/features/activity/register-activity";
 import { Timeline } from "@/features/activity/timeline";
 
@@ -59,11 +59,6 @@ export default async function CotizacionDetallePage({
         },
       },
       order: { select: { id: true } },
-      designRequests: {
-        where: { deletedAt: null },
-        select: { id: true },
-        take: 1,
-      },
     },
   });
   if (!q) notFound();
@@ -303,12 +298,14 @@ export default async function CotizacionDetallePage({
           {canRequestDesign && (
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Diseño</CardTitle>
+                <CardTitle className="text-base">Solicitudes de plano comercial</CardTitle>
               </CardHeader>
               <div className="px-4 pb-4">
-                <RequestDesignButton
+                <DesignRequestsPanel
+                  companyId={user.companyId}
                   quoteId={q.id}
-                  designRequestId={q.designRequests[0]?.id ?? null}
+                  canCreate={canRequestDesign}
+                  canEdit={user.ability.can("edit", "backlog_design")}
                 />
               </div>
             </Card>

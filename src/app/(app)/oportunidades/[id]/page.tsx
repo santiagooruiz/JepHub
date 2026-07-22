@@ -283,6 +283,7 @@ export default async function OportunidadDetallePage({
             designQuoteId={designQuoteId}
             designRequestId={designRequestId}
             estado={o.estado}
+            canUpload={isStorageConfigured()}
           />
           {canCreateQuotes && (
             <Button asChild>

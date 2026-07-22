@@ -108,6 +108,7 @@ export async function listDesignRequests(companyId: string): Promise<BacklogRow[
       r.nPedidoOfimatica ?? r.order?.erpSync?.nPedidoOfimatica ?? "",
     disenador: r.designer?.name ?? "",
     estado: r.estado,
+    version: r.version,
     despiece: chips(r, "Despiece", r.despiece),
     armadoGeneral: chips(r, "Armado general", r.armadoGeneral),
     planosTecnicos: chips(r, "Planos Técnicos", r.planosTecnicos),
@@ -171,6 +172,8 @@ export async function getDesignRequestDetail(companyId: string, id: string) {
       designer: { select: { name: true } },
       requestedBy: { select: { name: true } },
       special: { select: { id: true, codigo: true } },
+      previousRequest: { select: { id: true, numero: true, version: true } },
+      nextRequest: { select: { id: true, numero: true, estado: true } },
       messages: {
         include: { user: { select: { name: true } } },
         orderBy: { createdAt: "asc" },
@@ -192,6 +195,47 @@ export async function getDesignRequestDetail(companyId: string, id: string) {
   ]);
 
   return { ...dr, files, activities };
+}
+
+/**
+ * Historial de versiones de "Solicitar planos/cambios" para una cotización
+ * (panel "Solicitudes de plano comercial" embebido en la cotización).
+ */
+export async function listDesignRequestVersionsForQuote(companyId: string, quoteId: string) {
+  const rows = await db.designRequest.findMany({
+    where: { companyId, quoteId, deletedAt: null },
+    include: {
+      designer: { select: { name: true } },
+      attachments: {
+        where: { entityType: "DESIGN" },
+        orderBy: { createdAt: "desc" },
+      },
+    },
+    orderBy: { version: "asc" },
+  });
+
+  return rows.map((dr) => ({
+    id: dr.id,
+    numero: dr.numero,
+    version: dr.version,
+    estado: dr.estado,
+    fechaSolicitud: dateTimeFmt(dr.createdAt),
+    descripcion: dr.descripcion,
+    disenador: dr.designer?.name ?? "",
+    files: dr.attachments.map((f) => ({
+      id: f.id,
+      tipoArchivo: f.tipoArchivo,
+      observaciones: f.observaciones,
+      url: f.url,
+      nombre: f.nombre,
+      createdAt: dateTimeFmt(f.createdAt),
+      estado: f.estado,
+      aprobadoPor: f.aprobadoPor,
+      fechaAprobacion: f.fechaAprobacion ? dateTimeFmt(f.fechaAprobacion) : null,
+      firma: f.firma,
+      borrado: !!f.deletedAt,
+    })),
+  }));
 }
 
 /** Usuarios de la empresa (para el select de diseñador). */

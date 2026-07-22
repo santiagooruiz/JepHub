@@ -4,6 +4,7 @@
 // Es una acción de sistema (no exige permiso backlog_design del asesor).
 
 import { db } from "@/lib/db";
+import { getActiveDesigners } from "./notify";
 
 export type EspecialLinea = {
   descripcion: string | null;
@@ -78,14 +79,7 @@ export async function ensureEspecialDesignRequest(args: {
   });
 
   // Notificación in-app a los diseñadores activos de la empresa.
-  const disenadores = await db.user.findMany({
-    where: {
-      companyId,
-      status: "ACTIVE",
-      role: { name: { in: ["Diseñador", "Diseñador Comercial"] } },
-    },
-    select: { id: true },
-  });
+  const disenadores = await getActiveDesigners(companyId);
   if (disenadores.length) {
     await db.notification.createMany({
       data: disenadores.map((u) => ({

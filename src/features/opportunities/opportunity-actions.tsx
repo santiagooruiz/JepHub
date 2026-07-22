@@ -17,6 +17,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { requestDesign } from "@/features/design/actions";
+import { SolicitarPlanosDialog } from "@/features/design/solicitar-planos-dialog";
 import { deleteOpportunity, updateOpportunityStage } from "./actions";
 
 const itemCls =
@@ -37,6 +38,7 @@ export function OpportunityActionsMenu({
   designQuoteId,
   designRequestId,
   estado,
+  canUpload,
 }: {
   id: string;
   numero: number;
@@ -50,6 +52,8 @@ export function OpportunityActionsMenu({
   designQuoteId: string | null;
   /** Solicitud de diseño ya existente en alguna cotización ("Ver en backlog"). */
   designRequestId: string | null;
+  /** false cuando el storage (MinIO) no está configurado: solo registro de URL. */
+  canUpload: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
@@ -71,20 +75,6 @@ export function OpportunityActionsMenu({
       document.removeEventListener("keydown", onKey);
     };
   }, [open]);
-
-  function solicitarPlanos() {
-    if (!designQuoteId) return;
-    setOpen(false);
-    start(async () => {
-      const res = await requestDesign(designQuoteId);
-      if (res.ok) {
-        toast.success("Solicitud de diseño creada");
-        router.push(`/backlog/${res.id}`);
-      } else {
-        toast.error(res.error);
-      }
-    });
-  }
 
   function marcarPerdida() {
     setOpen(false);
@@ -163,14 +153,33 @@ export function OpportunityActionsMenu({
               >
                 <PencilRuler /> Ver en backlog de diseño
               </Link>
+            ) : designQuoteId ? (
+              <SolicitarPlanosDialog
+                dialogTitle="Solicitar planos/cambios"
+                canUpload={canUpload}
+                onCreate={(descripcion) => requestDesign(designQuoteId, descripcion)}
+                onDone={(newId) => {
+                  toast.success("Solicitud de diseño creada");
+                  router.push(`/backlog/${newId}`);
+                }}
+                trigger={
+                  <button
+                    type="button"
+                    className={itemCls}
+                    role="menuitem"
+                    onClick={() => setOpen(false)}
+                  >
+                    <PencilRuler /> Solicitar planos/cambios
+                  </button>
+                }
+              />
             ) : (
               <button
                 type="button"
                 className={itemCls}
                 role="menuitem"
-                disabled={!designQuoteId || pending}
-                title={designQuoteId ? undefined : "Requiere una cotización"}
-                onClick={solicitarPlanos}
+                disabled
+                title="Requiere una cotización"
               >
                 <PencilRuler /> Solicitar planos/cambios
               </button>

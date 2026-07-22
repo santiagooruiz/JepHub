@@ -1,7 +1,7 @@
 import { revalidatePath } from "next/cache";
 
 import { db } from "@/lib/db";
-import { DELIVERABLE_BY_CATEGORY } from "./types";
+import { BACKLOG_ESTADO_FINAL, DELIVERABLE_BY_CATEGORY } from "./types";
 
 /**
  * Efectos de negocio al registrar un archivo de una solicitud de diseño:
@@ -26,6 +26,8 @@ export async function applyDesignFileEffects(
       despiece: true,
       armadoGeneral: true,
       planosTecnicos: true,
+      quoteId: true,
+      estado: true,
     },
   });
   if (!dr) return;
@@ -57,6 +59,40 @@ export async function applyDesignFileEffects(
           tipo: "diseño",
           titulo: `Diseño N°${dr.numero}: entregables disponibles`,
           cuerpo: `${userName} subió ${tipoArchivo}${dr.descripcion ? ` · ${dr.descripcion}` : ""}.`,
+          href: `/backlog/${designRequestId}`,
+        },
+      });
+    }
+  }
+
+  // Cierre automático: Planos Comerciales es el entregable de "Solicitar
+  // planos/cambios" (origen cotización); al subirlo, la solicitud se cierra
+  // sin pasar por el pipeline ISO completo (ese sigue vigente para
+  // Despiece/Armado/Planos Técnicos vía "Aprobación final").
+  if (tipoArchivo === "Planos Comerciales" && dr.quoteId && dr.estado !== BACKLOG_ESTADO_FINAL) {
+    await db.designRequest.update({
+      where: { id: designRequestId },
+      data: { estado: BACKLOG_ESTADO_FINAL },
+    });
+    await db.activity.create({
+      data: {
+        companyId,
+        entityType: "DESIGN",
+        designRequestId,
+        accion: "Cerró la solicitud automáticamente al subir Planos Comerciales",
+        fechaHora: new Date(),
+        userId,
+        auto: true,
+      },
+    });
+    if (dr.requestedById && dr.requestedById !== userId) {
+      await db.notification.create({
+        data: {
+          companyId,
+          userId: dr.requestedById,
+          tipo: "diseño",
+          titulo: `Diseño N°${dr.numero}: Planos Comerciales listos`,
+          cuerpo: `${userName} subió Planos Comerciales${dr.descripcion ? ` · ${dr.descripcion}` : ""}. La solicitud fue cerrada.`,
           href: `/backlog/${designRequestId}`,
         },
       });

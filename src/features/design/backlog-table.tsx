@@ -129,7 +129,7 @@ export function BacklogTable({
       accessorKey: "tipo",
       header: "Tipo",
       cell: ({ row }) => {
-        const { quoteId, orderId, tipo, origenEstado } = row.original;
+        const { quoteId, orderId, tipo, origenEstado, version } = row.original;
         const href = orderId
           ? `/pedidos/${orderId}`
           : quoteId
@@ -140,6 +140,11 @@ export function BacklogTable({
             <Link href={href} className="text-primary hover:underline">
               {tipo}
             </Link>
+            {version > 1 && (
+              <Badge variant="secondary" className="ml-1.5 align-middle">
+                v{version}
+              </Badge>
+            )}
             {origenEstado && (
               <span className="block text-xs font-medium uppercase text-muted-foreground">
                 {origenEstado}

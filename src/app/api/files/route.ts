@@ -11,7 +11,7 @@ import {
   sanitizeFileName,
 } from "@/lib/storage";
 import { applyDesignFileEffects } from "@/features/design/file-effects";
-import { DESIGN_FILE_CATEGORIES } from "@/features/design/types";
+import { DESIGN_FILE_CATEGORIES, REQUESTER_UPLOAD_CATEGORIES } from "@/features/design/types";
 
 export const runtime = "nodejs";
 
@@ -91,7 +91,14 @@ export async function POST(req: Request) {
     }
   } else if (designRequestId) {
     entityType = "DESIGN";
-    if (!user.ability.can("edit", "backlog_design")) {
+    // El diseñador (edit) sube cualquier categoría; quien solo solicitó
+    // (create) solo puede adjuntar sus propias categorías (Levantamiento).
+    const canEdit = user.ability.can("edit", "backlog_design");
+    const canCreate = user.ability.can("create", "backlog_design");
+    const isRequesterCategory =
+      !!tipoArchivo &&
+      (REQUESTER_UPLOAD_CATEGORIES as readonly string[]).includes(tipoArchivo);
+    if (!canEdit && !(canCreate && isRequesterCategory)) {
       return NextResponse.json({ error: "No autorizado." }, { status: 403 });
     }
     if (tipoArchivo && !(DESIGN_FILE_CATEGORIES as readonly string[]).includes(tipoArchivo)) {

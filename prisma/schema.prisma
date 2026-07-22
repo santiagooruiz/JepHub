@@ -586,6 +586,12 @@ model DesignRequest {
   armadoGeneral  String?
   planosTecnicos String?
   nPedidoOfimatica String?
+  // Versionado: "Solicitar cambio" sobre una solicitud ya cerrada abre una
+  // nueva fila encadenada (misma cotización), en vez de reabrir la anterior.
+  version           Int             @default(1)
+  previousRequestId String?         @unique
+  previousRequest   DesignRequest?  @relation("DesignRequestVersion", fields: [previousRequestId], references: [id])
+  nextRequest       DesignRequest?  @relation("DesignRequestVersion")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   deletedAt   DateTime?

@@ -3,12 +3,14 @@
 import { revalidatePath } from "next/cache";
 
 import { db } from "@/lib/db";
-import { requirePermission } from "@/lib/guard";
+import { requirePermission, requireUser } from "@/lib/guard";
 import type { ActionResult } from "@/features/config/actions";
+import { clientDisplayName } from "@/features/clients/queries";
 import {
   BACKLOG_ESTADOS,
   BACKLOG_ESTADO_FINAL,
   DELIVERABLE_BY_CATEGORY,
+  REQUESTER_UPLOAD_CATEGORIES,
   formatMoney,
 } from "./types";
 import {
@@ -22,6 +24,7 @@ import {
   designPrecioSchema,
 } from "./schema";
 import { applyDesignFileEffects } from "./file-effects";
+import { notifyDesignersNewRequest } from "./notify";
 
 /** Registra un evento automático en el histórico de una entidad de diseño. */
 async function logDesignActivity(
@@ -57,11 +60,19 @@ async function nextNumero(companyId: string): Promise<number> {
   return (last?.numero ?? 0) + 1;
 }
 
-/** "Solicitar planos/cambios": envía una cotización a la cola de diseño. */
+/**
+ * "Solicitar planos/cambios": envía una cotización a la cola de diseño. La
+ * descripción es obligatoria (el diálogo del cliente ya no permite enviar
+ * sin ella ni sin adjuntar el levantamiento) para que diseño nunca reciba
+ * una solicitud sin la información necesaria para atenderla.
+ */
 export async function requestDesign(
-  quoteId: string
+  quoteId: string,
+  descripcion: string
 ): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
   const user = await requirePermission("create", "backlog_design");
+  const trimmed = descripcion.trim();
+  if (!trimmed) return { ok: false, error: "La descripción es obligatoria." };
 
   const quote = await db.quote.findFirst({
     where: { id: quoteId, companyId: user.companyId, deletedAt: null },
@@ -72,7 +83,21 @@ export async function requestDesign(
         where: { tipo: "PRODUCTO" },
         orderBy: [{ posicion: "asc" }, { id: "asc" }],
       },
-      designRequests: { where: { deletedAt: null }, select: { id: true }, take: 1 },
+      client: {
+        select: {
+          personType: true,
+          nombres: true,
+          apellidos: true,
+          razonSocial: true,
+          nombreComercial: true,
+        },
+      },
+      designRequests: {
+        where: { deletedAt: null },
+        select: { id: true },
+        orderBy: { version: "desc" },
+        take: 1,
+      },
     },
   });
   if (!quote) return { ok: false, error: "Cotización no encontrada." };
@@ -87,7 +112,7 @@ export async function requestDesign(
       clientId: quote.clientId,
       requestedById: user.id,
       imagen: first?.imagen ?? null,
-      descripcion: first?.descripcion ?? null,
+      descripcion: trimmed,
       datosEntrada: first?.observacionesInternas ?? null,
     },
   });
@@ -105,10 +130,110 @@ export async function requestDesign(
         auto: true,
       },
     }),
+    notifyDesignersNewRequest({
+      companyId: user.companyId,
+      designRequestId: dr.id,
+      numero: dr.numero,
+      descripcion: dr.descripcion,
+      clienteNombre: clientDisplayName(quote.client),
+      asesorNombre: user.name,
+    }),
   ]);
 
   revalidatePath("/backlog");
   revalidatePath(`/cotizaciones/${quoteId}`);
+  return { ok: true, id: dr.id };
+}
+
+/**
+ * "Solicitar cambio": sobre una solicitud de "Solicitar planos/cambios" ya
+ * cerrada (Finalizados), abre una nueva versión encadenada en vez de
+ * reabrir la anterior, preservando el histórico/archivos de cada versión.
+ */
+export async function requestDesignChange(
+  previousRequestId: string,
+  descripcion: string
+): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+  const user = await requirePermission("create", "backlog_design");
+  const trimmed = descripcion.trim();
+  if (!trimmed) return { ok: false, error: "La descripción es obligatoria." };
+
+  const previous = await db.designRequest.findFirst({
+    where: { id: previousRequestId, companyId: user.companyId, deletedAt: null },
+    include: {
+      nextRequest: { select: { id: true } },
+      quote: {
+        select: {
+          client: {
+            select: {
+              personType: true,
+              nombres: true,
+              apellidos: true,
+              razonSocial: true,
+              nombreComercial: true,
+            },
+          },
+        },
+      },
+    },
+  });
+  if (!previous) return { ok: false, error: "Solicitud no encontrada." };
+  if (!previous.quoteId) {
+    return { ok: false, error: "Solo se puede solicitar un cambio sobre solicitudes de cotización." };
+  }
+  if (previous.nextRequest) return { ok: true, id: previous.nextRequest.id };
+  if (previous.estado !== BACKLOG_ESTADO_FINAL) {
+    return { ok: false, error: `La solicitud debe estar en "${BACKLOG_ESTADO_FINAL}" para solicitar un cambio.` };
+  }
+
+  const dr = await db.designRequest.create({
+    data: {
+      companyId: user.companyId,
+      numero: await nextNumero(user.companyId),
+      quoteId: previous.quoteId,
+      clientId: previous.clientId,
+      requestedById: user.id,
+      imagen: previous.imagen,
+      descripcion: trimmed,
+      datosEntrada: previous.datosEntrada,
+      version: previous.version + 1,
+      previousRequestId: previous.id,
+    },
+  });
+
+  await Promise.all([
+    logDesignActivity(
+      user.companyId,
+      user.id,
+      "DESIGN",
+      dr.id,
+      `Solicitud de cambio (versión ${dr.version}) creada a partir del Diseño N°${previous.numero}`
+    ),
+    db.activity.create({
+      data: {
+        companyId: user.companyId,
+        entityType: "QUOTE",
+        quoteId: previous.quoteId,
+        accion: `Solicitó un cambio de diseño (versión ${dr.version})`,
+        fechaHora: new Date(),
+        userId: user.id,
+        auto: true,
+      },
+    }),
+    notifyDesignersNewRequest({
+      companyId: user.companyId,
+      designRequestId: dr.id,
+      numero: dr.numero,
+      descripcion: dr.descripcion,
+      clienteNombre: previous.quote?.client ? clientDisplayName(previous.quote.client) : null,
+      asesorNombre: user.name,
+      cambio: true,
+    }),
+  ]);
+
+  revalidatePath("/backlog");
+  revalidatePath(`/backlog/${previousRequestId}`);
+  revalidatePath(`/cotizaciones/${previous.quoteId}`);
   return { ok: true, id: dr.id };
 }
 
@@ -409,14 +534,23 @@ export async function postDesignMessage(input: unknown): Promise<ActionResult> {
   return { ok: true };
 }
 
-/** Registra un archivo del backlog por categoría (tab "Archivos"). */
+/**
+ * Registra un archivo del backlog por categoría (tab "Archivos"). El
+ * diseñador (edit) puede subir cualquier categoría; quien solo solicitó el
+ * plano (create) solo puede adjuntar sus propias categorías (Levantamiento).
+ */
 export async function saveDesignFile(input: unknown): Promise<ActionResult> {
-  const user = await requirePermission("edit", "backlog_design");
+  const user = await requireUser();
   const parsed = designFileSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Datos inválidos" };
   }
   const { designRequestId, tipoArchivo, observaciones, url } = parsed.data;
+  const canEdit = user.ability.can("edit", "backlog_design");
+  const canCreate = user.ability.can("create", "backlog_design");
+  if (!canEdit && !(canCreate && REQUESTER_UPLOAD_CATEGORIES.includes(tipoArchivo))) {
+    return { ok: false, error: "No autorizado." };
+  }
   const dr = await db.designRequest.findFirst({
     where: { id: designRequestId, companyId: user.companyId, deletedAt: null },
     select: { id: true },

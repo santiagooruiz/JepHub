@@ -7,53 +7,65 @@ import { PencilRuler } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import { requestDesign, requestFichaTecnica } from "./actions";
+import { requestDesign, requestDesignChange, requestFichaTecnica } from "./actions";
+import { BACKLOG_ESTADO_FINAL } from "./types";
+import { SolicitarPlanosDialog } from "./solicitar-planos-dialog";
 
 export function RequestDesignButton({
   quoteId,
   designRequestId,
+  designRequestEstado,
+  designRequestVersion,
+  canUpload,
 }: {
   quoteId: string;
   designRequestId: string | null;
+  designRequestEstado?: string | null;
+  designRequestVersion?: number;
+  /** false cuando el storage (MinIO) no está configurado: solo registro de URL. */
+  canUpload: boolean;
 }) {
   const router = useRouter();
-  const [error, setError] = React.useState<string | null>(null);
-  const [pending, start] = React.useTransition();
 
   if (designRequestId) {
+    const cerrada = designRequestEstado === BACKLOG_ESTADO_FINAL;
     return (
-      <Button asChild variant="outline" className="w-full">
-        <Link href={`/backlog/${designRequestId}`}>
-          <PencilRuler className="size-4" /> Ver en backlog
-        </Link>
-      </Button>
+      <div className="space-y-2">
+        <Button asChild variant="outline" className="w-full">
+          <Link href={`/backlog/${designRequestId}`}>
+            <PencilRuler className="size-4" /> Ver en backlog
+          </Link>
+        </Button>
+        {cerrada && (
+          <SolicitarPlanosDialog
+            dialogTitle={`Solicitar cambio (versión ${(designRequestVersion ?? 1) + 1})`}
+            canUpload={canUpload}
+            onCreate={(descripcion) => requestDesignChange(designRequestId, descripcion)}
+            onDone={(id) => router.push(`/backlog/${id}`)}
+            trigger={
+              <Button className="w-full">
+                <PencilRuler className="size-4" /> Solicitar cambio (versión{" "}
+                {(designRequestVersion ?? 1) + 1})
+              </Button>
+            }
+          />
+        )}
+      </div>
     );
   }
 
   return (
-    <div>
-      <Button
-        variant="outline"
-        className="w-full"
-        disabled={pending}
-        onClick={() =>
-          start(async () => {
-            setError(null);
-            const res = await requestDesign(quoteId);
-            if (res.ok) {
-              toast.success("Solicitud de diseño creada");
-              router.push(`/backlog/${res.id}`);
-            } else {
-              setError(res.error);
-              toast.error(res.error);
-            }
-          })
-        }
-      >
-        <PencilRuler className="size-4" /> Solicitar planos/cambios
-      </Button>
-      {error && <p className="mt-1 text-sm text-[hsl(var(--destructive))]">{error}</p>}
-    </div>
+    <SolicitarPlanosDialog
+      dialogTitle="Solicitar planos/cambios"
+      canUpload={canUpload}
+      onCreate={(descripcion) => requestDesign(quoteId, descripcion)}
+      onDone={(id) => router.push(`/backlog/${id}`)}
+      trigger={
+        <Button variant="outline" className="w-full">
+          <PencilRuler className="size-4" /> Solicitar planos/cambios
+        </Button>
+      }
+    />
   );
 }
 

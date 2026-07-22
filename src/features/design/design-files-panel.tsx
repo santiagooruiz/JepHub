@@ -43,20 +43,24 @@ const fileName = (f: Pick<DesignFileItem, "url" | "nombre">) =>
   f.nombre || f.url.split("/").pop() || f.url;
 
 /**
- * Tab "Archivos" del backlog: checklist de categorías fijas (Ficha Comercial,
- * Ficha Técnica, Despiece…) con los archivos registrados en cada una, como en
- * el CRM original.
+ * Tab "Archivos" del backlog: checklist de categorías fijas (Levantamiento,
+ * Planos Comerciales, Ficha Técnica, Despiece…) con los archivos registrados
+ * en cada una, como en el CRM original.
  */
 export function DesignFilesPanel({
   designRequestId,
   files,
-  canEdit,
+  editableCategories,
+  /** Subconjunto de categorías a renderizar (default: todas). */
+  categories,
   /** false cuando el storage (MinIO) no está configurado: solo registro de URL. */
   canUpload = true,
 }: {
   designRequestId: string;
   files: DesignFileItem[];
-  canEdit: boolean;
+  /** Categorías en las que este usuario puede agregar/borrar archivos, o "*" para todas (incl. "Otros"). */
+  editableCategories: readonly string[];
+  categories?: readonly string[];
   canUpload?: boolean;
 }) {
   const router = useRouter();
@@ -68,6 +72,8 @@ export function DesignFilesPanel({
   const [error, setError] = React.useState<string | null>(null);
   const [pending, start] = React.useTransition();
 
+  const isEditable = (cat: string) =>
+    editableCategories.includes("*") || editableCategories.includes(cat);
   const categorias = DESIGN_FILE_CATEGORIES as readonly string[];
   const otros = files.filter((f) => !categorias.includes(f.tipoArchivo ?? ""));
 
@@ -152,7 +158,7 @@ export function DesignFilesPanel({
 
   function FileChip({ f }: { f: DesignFileItem }) {
     const aprobable =
-      canEdit &&
+      isEditable(f.tipoArchivo ?? "") &&
       !f.borrado &&
       CATEGORIAS_APROBABLES.includes(f.tipoArchivo ?? "");
     return (
@@ -209,7 +215,7 @@ export function DesignFilesPanel({
                   <ThumbsDown className="size-3.5" />
                 </button>
               )}
-              {canEdit && (
+              {isEditable(f.tipoArchivo ?? "") && (
                 <button
                   onClick={() => remove(f.id)}
                   disabled={pending}
@@ -283,7 +289,7 @@ export function DesignFilesPanel({
           <span className={cn("text-sm", done ? "font-medium" : "text-muted-foreground")}>
             {nombre}
           </span>
-          {canEdit && addable && !abierto && (
+          {isEditable(nombre) && addable && !abierto && (
             <button
               onClick={() => {
                 setAdding(nombre);
@@ -362,7 +368,7 @@ export function DesignFilesPanel({
   return (
     <div className="space-y-3">
       {error && <p className="text-sm text-[hsl(var(--destructive))]">{error}</p>}
-      {DESIGN_FILE_CATEGORIES.map((cat) => (
+      {(categories ?? DESIGN_FILE_CATEGORIES).map((cat) => (
         <Categoria
           key={cat}
           nombre={cat}

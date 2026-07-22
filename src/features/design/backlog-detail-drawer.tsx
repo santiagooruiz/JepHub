@@ -88,6 +88,33 @@ export async function BacklogDetailDrawer({
             label="Producto"
             value={dr.special ? dr.special.codigo : `Diseño N° ${dr.numero}`}
           />
+          {(dr.version > 1 || dr.previousRequest || dr.nextRequest) && (
+            <Dato
+              label="Versión"
+              value={
+                <span className="space-y-1">
+                  <span className="block">{dr.version}</span>
+                  {dr.previousRequest && (
+                    <Link
+                      href={`/backlog/${dr.previousRequest.id}`}
+                      className="block text-primary hover:underline"
+                    >
+                      Basada en Diseño N° {dr.previousRequest.numero} (v{dr.previousRequest.version})
+                    </Link>
+                  )}
+                  {dr.nextRequest && (
+                    <Link
+                      href={`/backlog/${dr.nextRequest.id}`}
+                      className="block text-primary hover:underline"
+                    >
+                      Tiene una versión más reciente: Diseño N° {dr.nextRequest.numero} (
+                      {dr.nextRequest.estado})
+                    </Link>
+                  )}
+                </span>
+              }
+            />
+          )}
           {origen && (
             <Dato
               label="Cliente"
@@ -157,7 +184,7 @@ export async function BacklogDetailDrawer({
       content: (
         <DesignFilesPanel
           designRequestId={dr.id}
-          canEdit={canEdit}
+          editableCategories={canEdit ? ["*"] : []}
           canUpload={canUpload}
           files={dr.files.map((f) => ({
             id: f.id,

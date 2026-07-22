@@ -55,7 +55,8 @@ export function specialEstadoVariant(estado: string): BadgeProps["variant"] {
  * columnas ✓ Despiece / Armado / Planos del listado.
  */
 export const DESIGN_FILE_CATEGORIES = [
-  "Ficha Comercial",
+  "Levantamiento",
+  "Planos Comerciales",
   "Ficha Técnica / Ficha de ajuste",
   "Despiece",
   "Armado general",
@@ -66,6 +67,14 @@ export const DESIGN_FILE_CATEGORIES = [
 ] as const;
 
 export type DesignFileCategory = (typeof DESIGN_FILE_CATEGORIES)[number];
+
+/**
+ * Categorías que puede subir quien solo tiene permiso "create" (el Asesor
+ * que solicitó el plano), sin necesitar "edit" (rol de diseño).
+ */
+export const REQUESTER_UPLOAD_CATEGORIES: readonly DesignFileCategory[] = [
+  "Levantamiento",
+];
 
 /** Categoría de archivo → campo entregable de DesignRequest (si aplica). */
 export const DELIVERABLE_BY_CATEGORY: Partial<
@@ -93,6 +102,7 @@ export type BacklogRow = {
   nPedidoOfimatica: string;
   disenador: string;
   estado: string;
+  version: number;
   // Entregables: un chip por archivo de la categoría (azul si ya validado)
   despiece: DeliverableChip[];
   armadoGeneral: DeliverableChip[];
