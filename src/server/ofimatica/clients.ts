@@ -69,6 +69,13 @@ export const ERP_CLIENT_SORT_KEYS: ErpClientSortKey[] = [
   "fechaRegistro",
 ];
 
+// Ciudad real: CIUDAD.NOMBRE vía MTPROCLI.CIUDAD → CIUDAD.CODCIUDAD, con
+// CIUDADPRV (texto libre del maestro) como respaldo si no hay match o el
+// catálogo no tiene nombre. clean() en mapClientRow descarta el centinela '0'.
+const CIUDAD_JOIN = "LEFT JOIN CIUDAD CD ON CD.CODCIUDAD = C.CIUDAD";
+const CIUDAD_EXPR =
+  "LTRIM(RTRIM(COALESCE(NULLIF(LTRIM(RTRIM(CD.NOMBRE)), ''), C.CIUDADPRV)))";
+
 // LTRIM/RTRIM: hay valores con espacios iniciales en el ERP que romperían el
 // orden alfabético si se ordena por la columna char cruda.
 const SORT_EXPRS: Record<ErpClientSortKey, string> = {
@@ -76,7 +83,7 @@ const SORT_EXPRS: Record<ErpClientSortKey, string> = {
   documento: "LTRIM(RTRIM(C.NIT))",
   email: "LTRIM(RTRIM(C.EMAIL))",
   telefono: "LTRIM(RTRIM(C.TEL1))",
-  ciudad: "LTRIM(RTRIM(C.CIUDADPRV))",
+  ciudad: CIUDAD_EXPR,
   asesor: "LTRIM(RTRIM(V.NOMBRE))",
   estado: "C.ISPROSPECT",
   fechaRegistro: "C.FECHAING",
@@ -101,12 +108,12 @@ function buildTipoFilter(tipo?: ErpClientTipoFiltro): string {
   }
 }
 
-/** WHERE por ciudad exacta (CIUDADPRV del maestro). */
+/** WHERE por ciudad exacta (CIUDAD.NOMBRE vía join, con CIUDADPRV como respaldo). */
 function buildCiudadFilter(request: sql.Request, ciudad?: string): string {
   const c = (ciudad ?? "").trim();
   if (!c) return "";
   request.input("ciudad", sql.VarChar(60), c);
-  return "AND LTRIM(RTRIM(C.CIUDADPRV)) = @ciudad";
+  return `AND ${CIUDAD_EXPR} = @ciudad`;
 }
 
 /** WHERE por asesor específico (VENDEDOR = codven); filtro del admin. */
@@ -185,14 +192,15 @@ const CLIENT_SELECT = `
       C.PERSONANJ                      AS personanj,
       LTRIM(RTRIM(C.EMAIL))            AS email,
       LTRIM(RTRIM(C.TEL1))             AS telefono,
-      LTRIM(RTRIM(C.CIUDADPRV))        AS ciudad,
+      ${CIUDAD_EXPR}                   AS ciudad,
       LTRIM(RTRIM(V.NOMBRE))           AS asesor,
       C.ISPROSPECT                     AS isprospect,
       CONVERT(varchar, C.FECHAING, 23) AS fecha`;
 
 const CLIENT_FROM = `
     FROM MTPROCLI C
-    LEFT JOIN VENDEN V ON V.CODVEN = C.VENDEDOR`;
+    LEFT JOIN VENDEN V ON V.CODVEN = C.VENDEDOR
+    ${CIUDAD_JOIN}`;
 
 function mapClientRow(r: Record<string, unknown>): ErpClientRow {
   return {
@@ -201,7 +209,7 @@ function mapClientRow(r: Record<string, unknown>): ErpClientRow {
     tipo: r.personanj === 2 ? "Empresa" : "Persona",
     email: (r.email as string) || "",
     telefono: (r.telefono as string) || "",
-    ciudad: (r.ciudad as string) || "",
+    ciudad: clean(r.ciudad as string),
     asesor: (r.asesor as string) || "",
     estado: r.isprospect ? "Prospecto" : "Cliente",
     fechaRegistro: cleanErpDate(r.fecha as string),
@@ -240,9 +248,10 @@ export async function getErpClientCiudades(codvens?: string[]): Promise<string[]
   const request = pool.request();
   const scope = buildCodvenScope(request, codvens);
   const res = await request.query(`
-    SELECT DISTINCT LTRIM(RTRIM(C.CIUDADPRV)) AS ciudad
+    SELECT DISTINCT ${CIUDAD_EXPR} AS ciudad
     FROM MTPROCLI C
-    WHERE C.ESCLIENTE = 'S' AND LTRIM(RTRIM(C.CIUDADPRV)) NOT IN ('', '0') ${scope}
+    ${CIUDAD_JOIN}
+    WHERE C.ESCLIENTE = 'S' AND ${CIUDAD_EXPR} NOT IN ('', '0') ${scope}
     ORDER BY 1`);
   return res.recordset.map((r) => r.ciudad as string);
 }
@@ -267,6 +276,7 @@ export async function getErpClientStats(opts: {
       SUM(CASE WHEN C.PERSONANJ <> 2 OR C.PERSONANJ IS NULL THEN 1 ELSE 0 END) AS personas,
       SUM(CASE WHEN C.ISPROSPECT = 1 THEN 1 ELSE 0 END)          AS prospectos
     FROM MTPROCLI C
+    ${CIUDAD_JOIN}
     WHERE C.ESCLIENTE = 'S' ${filtro} ${scope} ${ciudadFiltro} ${vendFiltro}`);
   const r = res.recordset[0] ?? {};
   return {
