@@ -128,8 +128,19 @@ export default async function CotizacionDetallePage({
               href={`/print/cotizacion/${q.id}`}
               target="_blank"
               rel="noreferrer"
+              title="PDF con las carátulas colapsadas (lo que ve el cliente)"
             >
               <FileText className="size-4" /> PDF
+            </a>
+          </Button>
+          <Button asChild variant="outline">
+            <a
+              href={`/print/cotizacion/${q.id}?vista=despiece`}
+              target="_blank"
+              rel="noreferrer"
+              title="PDF con todos los productos en su propia línea, sin carátulas ni separadores"
+            >
+              <FileText className="size-4" /> PDF despiece
             </a>
           </Button>
           {canEdit && (

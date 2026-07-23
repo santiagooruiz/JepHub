@@ -2,7 +2,7 @@ import Link from "next/link";
 import { UserPlus } from "lucide-react";
 
 import { requirePermission } from "@/lib/guard";
-import { isAdmin } from "@/lib/auth";
+import { isAdmin, isAsesor } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { ErpClientsTable } from "@/features/clients/erp-clients-table";
 import {
@@ -106,6 +106,7 @@ export default async function ClientesPage({
         asesores={asesores}
         stats={stats}
         canEdit={canEdit}
+        showAsesor={!isAsesor(user)}
       />
     </div>
   );

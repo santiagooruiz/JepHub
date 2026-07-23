@@ -32,7 +32,7 @@ const STATS: { key: keyof ErpClientStats; label: string }[] = [
 ];
 
 // Encabezados de la tabla; sortKey debe existir en el whitelist del servidor.
-const COLUMNS: { label: string; sortKey: string | null }[] = [
+const BASE_COLUMNS: { label: string; sortKey: string | null }[] = [
   { label: "Nombre", sortKey: "nombre" },
   { label: "Documento", sortKey: "documento" },
   { label: "Tipo", sortKey: null },
@@ -59,6 +59,7 @@ export function ErpClientsTable({
   asesores,
   stats,
   canEdit,
+  showAsesor = true,
 }: {
   rows: ErpClientRow[];
   total: number;
@@ -79,7 +80,13 @@ export function ErpClientsTable({
   stats: ErpClientStats;
   /** Muestra el lápiz de edición por fila (permiso clients.edit). */
   canEdit: boolean;
+  /** Oculta la columna Asesor (el rol Asesor ya ve solo sus propios clientes). */
+  showAsesor?: boolean;
 }) {
+  const COLUMNS = React.useMemo(
+    () => (showAsesor ? BASE_COLUMNS : BASE_COLUMNS.filter((c) => c.label !== "Asesor")),
+    [showAsesor]
+  );
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -230,17 +237,19 @@ export function ErpClientsTable({
               downloadExcel(
                 "clientes",
                 COLUMNS.map((c) => c.label),
-                (res.rows ?? []).map((r) => [
-                  r.nombre,
-                  r.nit,
-                  r.tipo,
-                  r.email,
-                  r.telefono,
-                  r.ciudad,
-                  r.asesor,
-                  r.estado,
-                  r.fechaRegistro,
-                ])
+                (res.rows ?? []).map((r) =>
+                  [
+                    r.nombre,
+                    r.nit,
+                    r.tipo,
+                    r.email,
+                    r.telefono,
+                    r.ciudad,
+                    showAsesor ? r.asesor : null,
+                    r.estado,
+                    r.fechaRegistro,
+                  ].filter((v) => v !== null)
+                )
               );
             })
           }
@@ -324,9 +333,11 @@ export function ErpClientsTable({
                   <td className="px-3 align-middle text-muted-foreground" style={cellPy}>
                     {c.ciudad || "—"}
                   </td>
-                  <td className="px-3 align-middle text-muted-foreground" style={cellPy}>
-                    {c.asesor || "Sin asignar"}
-                  </td>
+                  {showAsesor && (
+                    <td className="px-3 align-middle text-muted-foreground" style={cellPy}>
+                      {c.asesor || "Sin asignar"}
+                    </td>
+                  )}
                   <td className="px-3 align-middle" style={cellPy}>
                     <Badge variant={estadoVariant(c.estado)}>{c.estado}</Badge>
                   </td>
@@ -359,7 +370,10 @@ export function ErpClientsTable({
               ))
             ) : (
               <tr>
-                <td colSpan={10} className="px-3 py-10 text-center text-muted-foreground">
+                <td
+                  colSpan={COLUMNS.length + 1}
+                  className="px-3 py-10 text-center text-muted-foreground"
+                >
                   Sin resultados.
                 </td>
               </tr>
